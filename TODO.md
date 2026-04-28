@@ -10,13 +10,17 @@
 - [x] Automatisierte Phasen-Erkennung (Aktiv, ATZ, Rente)
 - [x] Langfrist-Trend (Flächendiagramm Einkommen vs. Bedarf)
 - [x] Vertikale Meilenstein-Marker im Trend-Chart inkl. Beschriftung
+- [x] **Refactoring: Modularisierung** (Aufteilung in logic, ui, data)
 
 ## ⏳ In Arbeit / Nächste Schritte
+- [ ] **UI/UX Optimierung**
+    - [ ] Umbenennen von "Zentrale Parameter" zu "Profil" + Feld 'Name'
+    - [ ] Sidebar-Abschnitte klappbar machen (Expander)
+    - [ ] Phasen-Anzeige (Erwerb, ATZ, Ruhest.) direkt neben der Jahreszahl am Slider
+    - [ ] Markierungen auf dem Slider-Track (Raute für Rente, Dreieck für ATZ) - *Technisch via Overlay oder Legende*
 - [ ] **Modul 3.6: Persistenz (JSON Export/Import)**
     - [ ] Export der gesamten Session-Daten als JSON-File
     - [ ] Import-Funktion zum Wiederherstellen von Szenarien
-- [ ] **Refactoring: Modularisierung**
-    - [ ] Aufspaltung der `app.py` in logische Module (`logic/`, `ui/`, `data/`)
 
 ## 📅 Geplant (Spätere Sitzungen)
 - [ ] **Modul 3.4: Erweiterte Steuer- & SV-Engine**

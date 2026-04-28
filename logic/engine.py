@@ -23,16 +23,22 @@ def calculate_financials_for_year(jahr, params):
     """
     p = get_phase(jahr, params['atz_simulieren'], params['atz_start'], params['rentenbeginn'])
     
+    # Einkommens-Details für das Diagramm
+    income_details = {}
+    
     # Einnahmen & Abzüge
     if p == "Aktiv":
         brutto = params['aktuelles_brutto']
+        income_details["Gehalt"] = brutto
         steuer = berechne_einkommensteuer(brutto * 12) / 12
         sv = brutto * 0.20
         netto = brutto - steuer - sv
     elif p in ["ATZ(A)", "ATZ(P)"]:
         h_br = params['aktuelles_brutto'] / 2
         auf = h_br * (params['atz_aufstockung_pct'] / 100)
-        brutto = h_br + auf # Gesamt-Brutto für die Rückgabe
+        brutto = h_br + auf
+        income_details["Gehalt (ATZ)"] = h_br
+        income_details["Aufstockung"] = auf
         steuer = berechne_progressionsvorbehalt(h_br * 12, auf * 12) / 12
         sv = h_br * 0.20
         netto = (h_br + auf) - steuer - sv
@@ -41,33 +47,42 @@ def calculate_financials_for_year(jahr, params):
         r_ant = berechne_rentensteuer_anteil(params['rentenbeginn'])
         for e in params['einnahmen']:
             if jahr >= e["start"] and jahr <= e["ende"]:
-                b_g += e["betrag"]
+                val = e["betrag"]
+                income_details[e["name"]] = val
+                b_g += val
                 if e["typ"] in ["Gesetzlich", "bAV"]:
-                    st_b += e["betrag"] * (r_ant / 100)
+                    st_b += val * (r_ant / 100)
                 elif e["typ"] == "Privat":
-                    st_b += e["betrag"] * 0.18
+                    st_b += val * 0.18
                 else:
-                    st_b += e["betrag"]
+                    st_b += val
+        brutto = b_g
         steuer = berechne_einkommensteuer(st_b * 12) / 12
         sv = b_g * 0.15
         netto = b_g - steuer - sv
         
+    # Effektiver Steuersatz
+    tax_rate = (steuer / brutto * 100) if brutto > 0 else 0
+    
     # Ausgaben
     ausgaben = sum([
         params['ausgaben_input'][k] * (params['anpassungsfaktor_input'][k]/100 if p=="Rente" else 1.0) 
         for k in params['ausgaben_kategorien']
     ])
     
-    return {
+    res = {
         "Jahr": jahr,
         "Phase": p,
-        "Brutto": brutto if p != "Rente" else b_g,
+        "Brutto": brutto,
         "Steuern": steuer,
+        "Steuersatz": tax_rate,
         "Sozialabgaben": sv,
         "Netto-Einkommen": netto,
         "Bedarf": ausgaben,
         "Überschuss/Defizit": netto - ausgaben
     }
+    res.update(income_details) # Füge die einzelnen Quellen hinzu
+    return res
 
 def generate_trend_data(jahre, params):
     """Generiert ein DataFrame mit der zeitlichen Entwicklung."""

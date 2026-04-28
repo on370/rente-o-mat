@@ -24,16 +24,18 @@ def render_sidebar():
             atz_mitte = atz_start_val + (atz_dauer_val / 2)
             
             curr_year = st.session_state.betrachtungsjahr
-            if curr_year < atz_start_val or not atz_sim_val:
-                if curr_year < rentenbeginn_val:
-                    phase_label = "Erwerb"
-                    st.info(f"Aktuelle Phase: {phase_label}")
-                else:
-                    phase_label = "Ruhestand"
-                    st.success(f"Aktuelle Phase: {phase_label}")
-            elif atz_sim_val and atz_start_val <= curr_year < rentenbeginn_val:
+            if atz_sim_val and atz_start_val <= curr_year < rentenbeginn_val:
+                # ATZ Phase (Aktiv oder Passiv)
                 phase_label = "ATZ(A)" if curr_year < atz_mitte else "ATZ(P)"
                 st.warning(f"Aktuelle Phase: {phase_label}")
+            elif curr_year < rentenbeginn_val:
+                # Vor der ATZ oder ATZ nicht aktiv
+                phase_label = "Erwerb"
+                st.info(f"Aktuelle Phase: {phase_label}")
+            else:
+                # Nach Rentenbeginn
+                phase_label = "Ruhestand"
+                st.success(f"Aktuelle Phase: {phase_label}")
 
             # Meilenstein-Anzeige (Formatierung ohne .0)
             def fmt_j(j): return f"{j:.1f}".replace(".0", "") if j % 1 != 0 else f"{int(j)}"

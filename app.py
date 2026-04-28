@@ -10,16 +10,17 @@ if "einnahmen" not in st.session_state:
         {"name": "Betriebsrente", "betrag": 600.0, "typ": "bAV", "start": 2031, "ende": 2065},
     ]
 
-st.set_page_config(page_title="Ruhestands-Cockpit PRO", layout="wide")
-st.title("🛡️ Ruhestands-Cockpit: Präzisions-Planer")
+st.set_page_config(page_title="Rente-O-Mat", layout="wide")
+st.title("Rente-O-Mat")
 
 # --- SIDEBAR & PARAMETER ---
 p = render_sidebar()
 
 # --- HAUPTBEREICH (TABS) ---
-tab1, tab2 = st.tabs(["📊 Sankey-Analyse", "📈 Langfrist-Trend"])
+tab1, tab2 = st.tabs(["📊 Sankey-Analyse", "📈 Zeitliche Entwicklung"])
 
 with tab1:
+# ... (keine Änderungen im tab1) ...
     # 1. Status Quo Analyse
     st.subheader("1. Status Quo (Aktivphase)")
     sq_labels, sq_sources, sq_targets, sq_values = [], [], [], []
@@ -84,19 +85,24 @@ with tab1:
 
 with tab2:
     st.subheader("Finanzielle Entwicklung bis Alter 95")
+    show_tax_rate = st.checkbox("Effektiven Steuersatz anzeigen (%)", value=False)
+    
     jahre = list(range(p['aktuelles_jahr'], p['geburtsjahr'] + 96))
     df_trend = generate_trend_data(jahre, p)
     
-    # Meilensteine vorbereiten
+    # Meilensteine vorbereiten (ATZ-A/P Split)
     meilensteine = []
     if p['atz_simulieren']:
-        meilensteine.append({"jahr": p['atz_start'], "label": "Beginn ATZ", "color": "#F39C12"})
+        atz_mitte = p['atz_start'] + (p['atz_ende'] - p['atz_start']) / 2
+        meilensteine.append({"jahr": p['atz_start'], "label": "ATZ(A)", "color": "#F39C12"})
+        meilensteine.append({"jahr": atz_mitte, "label": "ATZ(P)", "color": "#F1C40F"})
+    
     meilensteine.append({"jahr": p['rentenbeginn'], "label": "Rentenbeginn", "color": "#28B463"})
     for e in p['einnahmen']:
         if e["start"] > p['aktuelles_jahr'] and e["start"] != p['rentenbeginn']:
             meilensteine.append({"jahr": e["start"], "label": f"Start: {e['name']}", "color": "#8E44AD"})
 
-    st.plotly_chart(create_trend_chart(df_trend, meilensteine), use_container_width=True)
+    st.plotly_chart(create_trend_chart(df_trend, meilensteine, show_tax_rate=show_tax_rate), use_container_width=True)
     
     with st.expander("Datentabelle anzeigen"):
-        st.dataframe(df_trend.style.format("{:.2f}€", subset=["Brutto", "Steuern", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"]), use_container_width=True)
+        st.dataframe(df_trend.style.format("{:.2f}€", subset=["Brutto", "Steuern", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"]).format("{:.1f}%", subset=["Steuersatz"]), use_container_width=True)

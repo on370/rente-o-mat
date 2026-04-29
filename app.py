@@ -10,8 +10,8 @@ if "einnahmen" not in st.session_state:
         {"name": "Betriebsrente", "betrag": 600.0, "typ": "bAV", "start": 2031, "ende": 2065},
     ]
 
-st.set_page_config(page_title="Rente-O-Mat", layout="wide")
-st.title("Rente-O-Mat")
+st.set_page_config(page_title="Rente-O-Mat PRO", layout="wide")
+st.title("🛡️ Rente-O-Mat: Präzisions-Planer")
 
 # --- SIDEBAR & PARAMETER ---
 p = render_sidebar()

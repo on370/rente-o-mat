@@ -2,14 +2,23 @@ import json
 import streamlit as st
 
 def export_settings(params):
-    """Exportiert alle Parameter als JSON-String."""
-    return json.dumps(params, indent=4, ensure_ascii=False)
+    """Exportiert alle Parameter als JSON-String. Enthält eine Versionsnummer zur Abwärtskompatibilität."""
+    # Metadaten hinzufügen
+    export_data = {
+        "version": "2.0",
+        "data": params
+    }
+    return json.dumps(export_data, indent=4, ensure_ascii=False)
 
 def import_settings(json_file):
-    """Importiert Einstellungen aus einer hochgeladenen Datei in den Session State."""
+    """Importiert Einstellungen aus einer hochgeladenen Datei in den Session State. Behandelt v1 und v2 JSONs."""
     if json_file is not None:
         try:
-            data = json.load(json_file)
+            raw_data = json.load(json_file)
+            
+            # Versionscheck
+            is_v2 = "version" in raw_data and raw_data["version"] >= "2.0"
+            data = raw_data["data"] if is_v2 else raw_data
             
             # 1. Einnahmen-Liste (Spezialfall)
             if "einnahmen" in data:
@@ -25,7 +34,14 @@ def import_settings(json_file):
                 "atz_aufstockung_pct": "atz_aufst_key",
                 "aktuelles_brutto": "brutto_key",
                 "aktuelles_netto": "netto_key",
-                "show_values": "show_vals_key"
+                "show_values": "show_vals_key",
+                "kinderzahl": "kinderzahl_key",
+                "kirchensteuer_satz": "kist_key",
+                "inflation_rate": "infl_rate_key",
+                "rentenanpassung_rate": "renten_anp_key",
+                "bav_anpassung_rate": "bav_anp_key",
+                "startvermoegen": "startvermoegen_key",
+                "kapitalrendite": "rendite_key"
             }
             
             for json_key, ss_key in mapping.items():

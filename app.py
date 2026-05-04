@@ -2,9 +2,28 @@ import streamlit as st
 from logic.engine import calculate_financials_for_year, generate_trend_data
 from ui.sidebar import render_sidebar
 from ui.charts import create_sankey, create_trend_chart, create_wealth_chart
+from config import FULL_VERSION
 
 st.set_page_config(page_title="Rente-O-Mat PRO", layout="wide")
-st.title("🛡️ Rente-O-Mat: Präzisions-Planer")
+
+# --- WELCOME DIALOG & DISCLAIMER ---
+if "disclaimer_accepted" not in st.session_state:
+    st.session_state.disclaimer_accepted = False
+
+if not st.session_state.disclaimer_accepted:
+    st.title("🛡️ Willkommen beim Rente-O-Mat")
+    st.subheader(f"Version {FULL_VERSION}")
+    st.warning("""
+    **DISCLAIMER:** Achtung, der Renten-Planer ist noch in der Entwicklung und kann fehlerhaft oder unvollständig sein. 
+    Alle Angaben müssen durch den/die Nutzer:in überprüft werden. Benutzung auf eigenes Risiko.
+    """)
+    if st.button("✅ Einverstanden", use_container_width=True):
+        st.session_state.disclaimer_accepted = True
+        st.rerun()
+    st.stop()
+
+st.title("🛡️ Rente-O-Mat: Der Renten-Planer")
+st.caption(FULL_VERSION)
 
 # --- SIDEBAR & PARAMETER ---
 p = render_sidebar()
@@ -152,3 +171,7 @@ with tab3:
         df_trend = generate_trend_data(jahre, p)
         
     st.plotly_chart(create_wealth_chart(df_trend, p['startvermoegen'], p['kapitalrendite']), use_container_width=True)
+
+# --- FOOTER & DISCLAIMER ---
+st.divider()
+st.caption(f"{FULL_VERSION} | **DISCLAIMER:** Achtung, der Renten-Planer ist noch in der Entwicklung und kann fehlerhaft oder unvollständig sein. Alle Angaben müssen durch den/die Nutzer:in überprüft werden. Benutzung auf eigenes Risiko.")

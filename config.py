@@ -1,0 +1,5 @@
+VERSION = "0.1"
+STAGE = "[BETA]"
+BUILD_ID = "0021"
+
+FULL_VERSION = f"{VERSION} {STAGE} (build {BUILD_ID})"

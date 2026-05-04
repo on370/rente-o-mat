@@ -18,8 +18,8 @@ def render_sidebar():
     with st.sidebar:
         # --- 2. PROFIL ---
         with st.expander("👤 Profil", expanded=True):
-            nutzer_name = st.text_input("Name", value=st.session_state.get("nutzer_name_key", "Max Mustermann"), key="nutzer_name_key")
-            geburtsjahr = st.number_input("Geburtsjahr", value=st.session_state.get("geburtsjahr_key", 1965), min_value=1940, max_value=2010, key="geburtsjahr_key")
+            nutzer_name = st.text_input("Name", value=st.session_state.get("nutzer_name_key", "Max Mustermann"), key="nutzer_name_key", help="Wird für den Dateinamen beim Export verwendet.")
+            geburtsjahr = st.number_input("Geburtsjahr", value=st.session_state.get("geburtsjahr_key", 1965), min_value=1940, max_value=2010, key="geburtsjahr_key", help="Dient der Berechnung von Freibeträgen und Renten-Altersgrenzen.")
             
             kinderzahl = st.number_input("Anzahl Kinder", value=st.session_state.get("kinderzahl_key", 0), min_value=0, max_value=10, key="kinderzahl_key", help="Beeinflusst den Beitrag zur Pflegeversicherung")
             
@@ -71,7 +71,7 @@ def render_sidebar():
         # --- 3. MEILENSTEINE ---
         default_rentenbeginn = geburtsjahr + 67
         with st.expander("📅 Meilensteine", expanded=True):
-            rentenbeginn = st.number_input("Rentenbeginn (Jahr)", value=st.session_state.get("rentenbeginn_input", default_rentenbeginn), min_value=aktuelles_jahr, key="rentenbeginn_input")
+            rentenbeginn = st.number_input("Rentenbeginn (Jahr)", value=st.session_state.get("rentenbeginn_input", default_rentenbeginn), min_value=aktuelles_jahr, key="rentenbeginn_input", help="Das Jahr deines geplanten Renteneintritts. Jeder Monat vor der Regelaltersgrenze führt zu Abschlägen!")
             
             if "prev_rentenbeginn" not in st.session_state:
                 st.session_state.prev_rentenbeginn = rentenbeginn
@@ -82,7 +82,7 @@ def render_sidebar():
                         e["start"] = rentenbeginn
                 st.session_state.prev_rentenbeginn = rentenbeginn
 
-            atz_simulieren = st.checkbox("ATZ einplanen", value=st.session_state.get("atz_sim_input", False), key="atz_sim_input")
+            atz_simulieren = st.checkbox("ATZ einplanen", value=st.session_state.get("atz_sim_input", False), key="atz_sim_input", help="Simuliert eine Altersteilzeit (Blockmodell) direkt vor dem Rentenbeginn.")
             if atz_simulieren:
                 max_atz = max(1, rentenbeginn - aktuelles_jahr)
                 atz_dauer = st.slider("ATZ Dauer (Jahre)", 1, max_atz, min(6, max_atz), key="atz_dauer_input")
@@ -106,8 +106,8 @@ def render_sidebar():
 
         # --- 4. FINANZEN AKTUELL ---
         with st.expander("💶 Finanzen Aktuell", expanded=False):
-            aktuelles_brutto = st.number_input("Brutto/mtl.", value=st.session_state.get("brutto_key", 6000.0), key="brutto_key")
-            atz_aufst = st.slider("ATZ-Aufst. % (vom halben Brutto)", 20, 50, st.session_state.get("atz_aufst_key", 20), key="atz_aufst_key")
+            aktuelles_brutto = st.number_input("Brutto/mtl.", value=st.session_state.get("brutto_key", 6000.0), key="brutto_key", help="Dein aktuelles monatliches Bruttogehalt (als Basis für die Aktivphase).")
+            atz_aufst = st.slider("ATZ-Aufst. % (vom halben Brutto)", 20, 50, st.session_state.get("atz_aufst_key", 20), key="atz_aufst_key", help="Gesetzliches Minimum sind 20%. Viele Tarifverträge garantieren z.B. 82% des vorherigen Nettos. Verschiebe den Regler, um die Netto-Quote unten abzulesen.")
             
             # --- Echtzeit-Berechnung der ATZ-Nettoquote ---
             from logic.engine import calculate_financials_for_year
@@ -134,7 +134,7 @@ def render_sidebar():
                 quote = (res_atz["Netto-Einkommen"] / res_aktiv["Netto-Einkommen"]) * 100
                 st.info(f"**ATZ-Netto:** {res_atz['Netto-Einkommen']:.0f} €/mtl.\n\n*(Entspricht **{quote:.1f} %** deines bisherigen Netto-Gehalts von {res_aktiv['Netto-Einkommen']:.0f} €)*")
             
-            aktuelles_netto = st.number_input("Netto/mtl. (Optional)", value=st.session_state.get("netto_key", 4500.0), key="netto_key")
+            aktuelles_netto = st.number_input("Netto/mtl. (Optional)", value=st.session_state.get("netto_key", 4500.0), key="netto_key", help="Dein echtes ausgezahltes Netto. Wird nur für das Status-Quo-Sankey ganz oben verwendet, um Abweichungen zu erkennen.")
             show_values = st.checkbox("Werte im Sankey zeigen", value=st.session_state.get("show_vals_key", True), key="show_vals_key")
 
         # --- 5. EINNAHMEQUELLEN ---

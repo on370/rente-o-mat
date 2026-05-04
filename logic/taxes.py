@@ -85,6 +85,22 @@ def berechne_progressionsvorbehalt(zu_versteuerndes_einkommen, steuerfreier_betr
     return effektiver_steuersatz * zu_versteuerndes_einkommen
 
 
+def berechne_fuenftelregelung(normales_zve, einmalzahlung, jahr=2025):
+    """
+    Berechnet die Einkommensteuer nach der Fünftelregelung (§ 34 EStG) für außerordentliche Einkünfte (z.B. bAV Kapital).
+    Gibt die ZUSÄTZLICHE Steuer für die Einmalzahlung zurück.
+    """
+    if einmalzahlung <= 0:
+        return 0.0
+
+    steuer_normal = berechne_einkommensteuer(normales_zve, jahr)
+    # Steuer auf normales Einkommen + 1/5 der Einmalzahlung
+    steuer_mit_fuenftel = berechne_einkommensteuer(normales_zve + (einmalzahlung / 5), jahr)
+    
+    mehrsteuer_fuenftel = (steuer_mit_fuenftel - steuer_normal) * 5
+    return mehrsteuer_fuenftel
+
+
 def berechne_rentensteuer_anteil(rentenbeginn_jahr):
     """
     Ermittelt den steuerpflichtigen Anteil der gesetzlichen Rente basierend auf dem Kohortenprinzip.

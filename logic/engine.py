@@ -7,7 +7,7 @@ import pandas as pd
 from logic.taxes import (
     berechne_einkommensteuer, berechne_progressionsvorbehalt,
     berechne_rentensteuer_anteil, berechne_soli, berechne_kirchensteuer,
-    berechne_ertragsanteil, berechne_abgeltungsteuer
+    berechne_ertragsanteil, berechne_abgeltungsteuer, berechne_fuenftelregelung
 )
 from logic.sozialversicherung import berechne_sv_aktiv, berechne_sv_atz, berechne_sv_rentner
 
@@ -62,6 +62,9 @@ def calculate_financials_for_year(jahr, params):
     sv = 0.0
     netto = 0.0
     steuer_kapital = 0.0  # Separate Abgeltungsteuer
+    rentenabschlag_gesamt = 0.0
+    steuerpflichtiger_anteil_grv = 0.0
+    kapitalzuwachs_sonder = 0.0
 
     if phase == "Aktiv":
         brutto = params['aktuelles_brutto']
@@ -106,36 +109,54 @@ def calculate_financials_for_year(jahr, params):
         # Einnahmen mit Dynamisierung sammeln
         sv_einnahmen = []  # Für differenzierte SV-Berechnung
         kapitalertraege_jahressumme = 0.0
+        steuerpflichtiger_anteil_grv = r_ant
+        einmalzahlungen_bav = []
 
         for e in params['einnahmen']:
             if jahr >= e["start"] and jahr <= e["ende"]:
                 val = e["betrag"]
+                abschlag_betrag = 0.0
 
                 # Dynamisierung je nach Typ
                 if e["typ"] == "Gesetzlich":
                     val = _dynamisiere_betrag(val, e["start"], jahr, rentenanpassung_rate)
+                    regelaltersgrenze = 67
+                    monate_frueher = max(0, (regelaltersgrenze - alter_bei_rentenbeginn) * 12)
+                    abschlag_pct = min(14.4, monate_frueher * 0.3)
+                    abschlag_betrag = val * (abschlag_pct / 100)
+                    rentenabschlag_gesamt += abschlag_betrag
                 elif e["typ"] == "bAV":
                     val = _dynamisiere_betrag(val, e["start"], jahr, bav_anpassung_rate)
-                # Privat und Kapital: nominal fix (keine Dynamisierung)
+                elif e["typ"] == "bAV (Einmalzahlung)":
+                    if jahr >= e["start"] and jahr < e["start"] + 10:
+                        sv_einnahmen.append({"name": e["name"] + " (SV)", "betrag": e["betrag"] / 120, "typ": "bAV"})
+                    if jahr == e["start"]:
+                        einmalzahlungen_bav.append(e["betrag"])
+                    continue # Keine laufende Einnahme im Sankey
+                elif e["typ"] == "Entnahmeplan (Vermögen)":
+                    income_details[e["name"]] = e["betrag"]
+                    b_g += e["betrag"]
+                    continue # Steuer- und abgabenfrei
 
+                val_nach_abschlag = val - abschlag_betrag
                 income_details[e["name"]] = val
                 b_g += val
-                sv_einnahmen.append({"name": e["name"], "betrag": val, "typ": e["typ"]})
+                sv_einnahmen.append({"name": e["name"], "betrag": val_nach_abschlag, "typ": e["typ"]})
 
                 # Steuerpflichtiger Anteil je nach Typ
                 if e["typ"] == "Gesetzlich":
-                    st_b += val * (r_ant / 100)
+                    st_b += val_nach_abschlag * (r_ant / 100)
                 elif e["typ"] == "bAV":
                     # bAV: 100% nachgelagert steuerpflichtig (§ 22 Nr. 5 EStG)
-                    st_b += val
+                    st_b += val_nach_abschlag
                 elif e["typ"] == "Privat":
                     # Ertragsanteil nach Alter bei Rentenbeginn (§ 22 EStG)
-                    st_b += val * (ertragsanteil / 100)
+                    st_b += val_nach_abschlag * (ertragsanteil / 100)
                 elif e["typ"] == "Kapital":
                     # Kapitalerträge separat über Abgeltungsteuer
-                    kapitalertraege_jahressumme += val * 12
+                    kapitalertraege_jahressumme += val_nach_abschlag * 12
                 else:  # Sonstiges
-                    st_b += val
+                    st_b += val_nach_abschlag
 
         brutto = b_g
 
@@ -153,11 +174,21 @@ def calculate_financials_for_year(jahr, params):
             kapitalertraege_jahressumme, kirchensteuer_satz
         ) / 12
 
+        # Fünftelregelung für Einmalzahlungen
+        for ez in einmalzahlungen_bav:
+            mehr_ekst = berechne_fuenftelregelung(st_b * 12, ez, jahr)
+            mehr_soli = berechne_soli((steuer_ekst * 12) + mehr_ekst) - berechne_soli(steuer_ekst * 12)
+            mehr_kist = berechne_kirchensteuer((steuer_ekst * 12) + mehr_ekst, kirchensteuer_satz) - berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz)
+            
+            # Netto fließt als steuerfreier Sonderzuwachs ins Vermögen (Tab 2)
+            netto_ez = ez - mehr_ekst - mehr_soli - mehr_kist
+            kapitalzuwachs_sonder += netto_ez
+
         soli = soli_ekst  # Soli auf Kapital ist schon in berechne_abgeltungsteuer enthalten
         kist = kist_ekst
         steuer_ekst = steuer_ekst + steuer_kapital
 
-        netto = brutto - steuer_ekst - soli - kist - sv
+        netto = brutto - steuer_ekst - soli - kist - sv - rentenabschlag_gesamt
 
     # Gesamtsteuer für Anzeige
     steuer_gesamt = steuer_ekst + soli + kist
@@ -188,7 +219,10 @@ def calculate_financials_for_year(jahr, params):
         "Sozialabgaben": sv,
         "Netto-Einkommen": netto,
         "Bedarf": ausgaben,
-        "Überschuss/Defizit": netto - ausgaben
+        "Überschuss/Defizit": netto - ausgaben,
+        "Rentenabschlag": rentenabschlag_gesamt,
+        "Steuerpflichtiger_Rentenanteil": steuerpflichtiger_anteil_grv,
+        "Kapitalzuwachs_Sonder": kapitalzuwachs_sonder
     }
     res.update(income_details)  # Füge die einzelnen Quellen hinzu
     return res

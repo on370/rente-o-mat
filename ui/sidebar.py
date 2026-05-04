@@ -93,11 +93,48 @@ def render_sidebar():
                 atz_dauer = 0
                 atz_start, atz_ende = 9999, 9999
 
+            # --- INFOBOX FÜR ABSCHLAG UND STEUER ---
+            st.divider()
+            alter_bei_rente = rentenbeginn - geburtsjahr
+            monate_frueher = max(0, (67 - alter_bei_rente) * 12)
+            abschlag_pct = min(14.4, monate_frueher * 0.3)
+            
+            from logic.taxes import berechne_rentensteuer_anteil
+            steuer_anteil = berechne_rentensteuer_anteil(rentenbeginn)
+            
+            st.info(f"**Rentenabschlag (GRV):** {abschlag_pct:.1f} %\n\n**Steuerpflichtiger Anteil:** {steuer_anteil:.1f} %")
+
         # --- 4. FINANZEN AKTUELL ---
         with st.expander("💶 Finanzen Aktuell", expanded=False):
             aktuelles_brutto = st.number_input("Brutto/mtl.", value=st.session_state.get("brutto_key", 6000.0), key="brutto_key")
-            atz_aufst = st.slider("ATZ-Aufst. %", 20, 50, st.session_state.get("atz_aufst_key", 20), key="atz_aufst_key")
-            aktuelles_netto = st.number_input("Netto/mtl.", value=st.session_state.get("netto_key", 4500.0), key="netto_key")
+            atz_aufst = st.slider("ATZ-Aufst. % (vom halben Brutto)", 20, 50, st.session_state.get("atz_aufst_key", 20), key="atz_aufst_key")
+            
+            # --- Echtzeit-Berechnung der ATZ-Nettoquote ---
+            from logic.engine import calculate_financials_for_year
+            
+            # Minimaler params-dict für die Engine
+            tmp_params = {
+                "aktuelles_brutto": aktuelles_brutto,
+                "atz_aufstockung_pct": atz_aufst,
+                "kinderzahl": kinderzahl,
+                "kirchensteuer_satz": kirchensteuer_satz,
+                "atz_simulieren": True, 
+                "atz_start": aktuelles_jahr, 
+                "rentenbeginn": aktuelles_jahr + 10,
+                "ausgaben_kategorien": [], "ausgaben_input": {}, "einnahmen": []
+            }
+            
+            # 1. Aktiv-Netto berechnen (Jahr < ATZ_start -> Aktiv)
+            res_aktiv = calculate_financials_for_year(aktuelles_jahr - 1, tmp_params)
+            
+            # 2. ATZ-Netto berechnen (Jahr = ATZ_start -> ATZ(A))
+            res_atz = calculate_financials_for_year(aktuelles_jahr, tmp_params)
+            
+            if res_aktiv["Netto-Einkommen"] > 0:
+                quote = (res_atz["Netto-Einkommen"] / res_aktiv["Netto-Einkommen"]) * 100
+                st.info(f"**ATZ-Netto:** {res_atz['Netto-Einkommen']:.0f} €/mtl.\n\n*(Entspricht **{quote:.1f} %** deines bisherigen Netto-Gehalts von {res_aktiv['Netto-Einkommen']:.0f} €)*")
+            
+            aktuelles_netto = st.number_input("Netto/mtl. (Optional)", value=st.session_state.get("netto_key", 4500.0), key="netto_key")
             show_values = st.checkbox("Werte im Sankey zeigen", value=st.session_state.get("show_vals_key", True), key="show_vals_key")
 
         # --- 5. EINNAHMEQUELLEN ---
@@ -121,18 +158,34 @@ def render_sidebar():
                 current_e = st.session_state.einnahmen[st.session_state.edit_idx] if is_edit else {"name": "Neue Quelle", "betrag": 500.0, "typ": "Privat", "start": rentenbeginn, "ende": 2065}
                 st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
                 f_name = st.text_input("Name", value=current_e["name"])
-                f_typ = st.selectbox("Typ", ["Gesetzlich", "bAV", "Privat", "Kapital", "Sonstiges"], index=["Gesetzlich", "bAV", "Privat", "Kapital", "Sonstiges"].index(current_e["typ"]))
-                f_betrag = st.number_input("Betrag (€/mtl.)", value=float(current_e["betrag"]), min_value=0.0)
-                f_start = st.number_input("Von Jahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
-                f_ende = st.number_input("Bis Jahr", value=int(current_e["ende"]), min_value=f_start)
+                f_typ_options = ["Gesetzlich", "bAV", "Privat", "Kapital", "bAV (Einmalzahlung)", "Entnahmeplan (Vermögen)", "Sonstiges"]
+                f_typ_index = f_typ_options.index(current_e["typ"]) if current_e.get("typ") in f_typ_options else 0
+                f_typ = st.selectbox("Typ", f_typ_options, index=f_typ_index)
+                
+                if f_typ == "bAV (Einmalzahlung)":
+                    f_betrag = st.number_input("Einmalbetrag (€ Brutto)", value=float(current_e["betrag"]), min_value=0.0)
+                    f_start = st.number_input("Auszahlungsjahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
+                    f_ende = f_start
+                elif f_typ == "Entnahmeplan (Vermögen)":
+                    f_betrag = st.number_input("Entnahme (€/mtl. Netto)", value=float(current_e["betrag"]), min_value=0.0)
+                    f_start = st.number_input("Von Jahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
+                    f_ende = st.number_input("Bis Jahr", value=int(current_e["ende"]), min_value=f_start)
+                elif f_typ == "Gesetzlich":
+                    f_betrag = st.number_input("Betrag (€/mtl., theor. voll bei 67)", value=float(current_e["betrag"]), min_value=0.0)
+                    f_start = st.number_input("Von Jahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
+                    f_ende = st.number_input("Bis Jahr", value=int(current_e["ende"]), min_value=f_start)
+                else:
+                    f_betrag = st.number_input("Betrag (€/mtl.)", value=float(current_e["betrag"]), min_value=0.0)
+                    f_start = st.number_input("Von Jahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
+                    f_ende = st.number_input("Bis Jahr", value=int(current_e["ende"]), min_value=f_start)
                 c1, c2 = st.columns(2)
-                if c1.button("💾 OK"):
+                if c1.button("💾 Speichern"):
                     new_data = {"name": f_name, "betrag": f_betrag, "typ": f_typ, "start": f_start, "ende": f_ende}
                     if is_edit: st.session_state.einnahmen[st.session_state.edit_idx] = new_data
                     else: st.session_state.einnahmen.append(new_data)
                     st.session_state.edit_idx, st.session_state.show_add_form = None, False
                     st.rerun()
-                if c2.button("❌ Stop"):
+                if c2.button("❌ Abbrechen"):
                     st.session_state.edit_idx, st.session_state.show_add_form = None, False
                     st.rerun()
                     

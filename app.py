@@ -75,6 +75,8 @@ with tab1:
                 add_r(e["name"], "Brutto", val)
 
     # Abzüge aufschlüsseln
+    if res.get('Rentenabschlag', 0) > 0:
+        add_r("Brutto", "Rentenabschlag", res['Rentenabschlag'])
     if res['EkSt'] > 0:
         add_r("Brutto", "Einkommensteuer", res['EkSt'])
     if res['Soli'] > 0:

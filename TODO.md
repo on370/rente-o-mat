@@ -18,17 +18,21 @@
 - [x] **SV-Engine v2:** Dynamische BBG, PV-Kinderstaffelung, bAV-Freibetrag
 - [x] **Dynamisierung:** Getrennte Inflation für Ausgaben, GRV und bAV
 - [x] **Vermögenskurve:** Neuer Tab mit kumulativer Kapitalentwicklung
+- [x] **Transparenz vorzeitiger Renteneintritt (Abschläge)**
+    - [x] Visualisierung des theoretischen vollen Rentenbetrags (67 Jahre) als Einkunft im Sankey und Trend-Chart
+    - [x] Visualisierung des Renten-Abschlags als roten Abzug/Defizit-Posten
+    - [x] Trend-Chart: Rentenabschlag als gestrichelten roten Balken *on top* gesetzt
+    - [x] Sankey: Verbindung und Schrift für "Rentenabschlag" explizit rot gefärbt
+- [x] **Steuersatz-Visualisierung**
+    - [x] Sinnvolle Visualisierung des ansteigenden Steuersatzes im Zeitverlauf
+- [x] **Erweiterte Rentenlogik & bAV Einmalzahlung**
+    - [x] bAV Einmalzahlung (Kapitalauszahlung): Steuer (Fünftelregelung) und SV (120-Monate-Regel) integriert
+    - [x] UX für Einmalzahlung: Alternative Eingabe, Fiktive Verrentung (Entnahmeplan) steuerfrei ins Sankey integriert
 
 ## ⏳ In Arbeit / Nächste Schritte (Phase 3 & 4)
 - [ ] **Erweiterte Rentenlogik**
-    - [ ] Rentenabschläge/-zuschläge (0,3% pro Monat)
+    - [ ] Dynamische Regelaltersgrenze (Altersgrenze abhängig vom Geburtsjahr berechnen, nicht fix 67)
     - [ ] Eingabe von Entgeltpunkten statt fixem Betrag
-    - [ ] Einmal-Cashflows (Abfindung, Erbe)
-- [ ] **Transparenz vorzeitiger Renteneintritt (Abschläge)**
-    - [ ] Visualisierung des theoretischen vollen Rentenbetrags (67 Jahre) als Einkunft im Sankey und Trend-Chart
-    - [ ] Visualisierung des Renten-Abschlags als roten Abzug/Defizit-Posten
-- [ ] **Steuersatz-Visualisierung**
-    - [ ] Sinnvolle Visualisierung des ansteigenden Steuersatzes im Zeitverlauf
 
 ## 📅 Geplant (Spätere Sitzungen)
 - [ ] **Modul 3.4: Erweiterte Steuer- & SV-Engine**

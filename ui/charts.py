@@ -1,8 +1,10 @@
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 def create_sankey(labels, sources, targets, values, title, show_vals=True):
     """
     Erstellt ein professionelles Sankey-Diagramm mit dynamischer Farbgebung.
+    Unterstützt jetzt auch spezifische Knoten für Soli und KiSt.
     """
     display_labels = []
     node_colors = []
@@ -13,11 +15,15 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
         v = max(in_s, out_s)
         display_labels.append(f"{label} ({v:.0f}€)" if show_vals else label)
         
-        # Dynamische Farben für Ergebnis-Knoten
+        # Dynamische Farben für Ergebnis-Knoten und Steuern
         if "Überschuss" in label:
             node_colors.append("#28B463") # Grün
         elif "Unterdeckung" in label:
             node_colors.append("#CB4335") # Rot
+        elif "Steuern" in label or "Soli" in label or "KiSt" in label or "Abgeltungsteuer" in label:
+            node_colors.append("#E74C3C") # Helles Rot für Steuern
+        elif "Sozialabgaben" in label:
+            node_colors.append("#F39C12") # Orange für SV
         else:
             node_colors.append("#2E86C1") # Standard Blau
 
@@ -49,16 +55,13 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
 def create_trend_chart(df, meilensteine, show_tax_rate=False):
     """
     Erstellt ein gestapeltes Balkendiagramm für das Brutto-Einkommen (aufgeschlüsselt nach Quellen)
-    und Linien für Bedarf sowie optional den Steuersatz.
+    und Linien für Bedarf, Netto-Einkommen sowie optional den Steuersatz.
     """
-    from plotly.subplots import make_subplots
-    
     # Subplots erstellen (zweite Y-Achse für Steuersatz)
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
     # 1. Gestapelte Balken für Einkommensquellen
-    # Wir identifizieren alle Spalten, die Einkommensquellen sind (alles außer den Basis-Metriken)
-    exclude_cols = ["Jahr", "Phase", "Brutto", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"]
+    exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"]
     income_cols = [c for c in df.columns if c not in exclude_cols]
     
     for col in income_cols:
@@ -69,11 +72,17 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     
     # 2. Linie für Bedarf
     fig.add_trace(
-        go.Scatter(x=df["Jahr"], y=df["Bedarf"], name="Bedarf (Netto)", line=dict(color='#CB4335', width=3)),
+        go.Scatter(x=df["Jahr"], y=df["Bedarf"], name="Bedarf (Ausgaben)", line=dict(color='#CB4335', width=3)),
+        secondary_y=False
+    )
+
+    # 3. Linie für Netto-Einkommen
+    fig.add_trace(
+        go.Scatter(x=df["Jahr"], y=df["Netto-Einkommen"], name="Netto-Einkommen", line=dict(color='#28B463', width=3, dash='dash')),
         secondary_y=False
     )
     
-    # 3. Optionale Linie für Steuersatz
+    # 4. Optionale Linie für Steuersatz
     if show_tax_rate:
         fig.add_trace(
             go.Scatter(x=df["Jahr"], y=df["Steuersatz"], name="Steuersatz (%)", line=dict(color='#8E44AD', width=2, dash='dot')),
@@ -104,4 +113,51 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     if show_tax_rate:
         fig.update_yaxes(title_text="Steuersatz (%)", secondary_y=True, range=[0, 50])
         
+    return fig
+
+def create_wealth_chart(df, startvermoegen=0.0, kapitalrendite=0.0):
+    """
+    Erstellt eine kumulative Kurve für die Vermögensentwicklung über die Jahre.
+    startvermoegen: Kapital zum Zeitpunkt aktuelles_jahr
+    kapitalrendite: Jährliche Verzinsung des Kapitals in %
+    """
+    jahre = df["Jahr"].tolist()
+    ueberschuesse = df["Überschuss/Defizit"].tolist()
+    
+    vermoegen = []
+    akt_vermoegen = startvermoegen
+    
+    # Da die Überschüsse monatlich sind, müssen sie auf's Jahr hochgerechnet werden
+    for u in ueberschuesse:
+        # 1. Rendite auf bestehendes Kapital anwenden
+        akt_vermoegen = akt_vermoegen * (1 + kapitalrendite / 100)
+        # 2. Jahres-Cashflow (Überschuss/Defizit * 12) addieren
+        akt_vermoegen += u * 12
+        vermoegen.append(akt_vermoegen)
+        
+    fig = go.Figure()
+    
+    # Vermögenskurve zeichnen (grün wenn positiv, rot wenn negativ)
+    fig.add_trace(
+        go.Scatter(
+            x=jahre, 
+            y=vermoegen, 
+            name="Vermögen",
+            fill='tozeroy',
+            line=dict(color='#2E86C1', width=3),
+            fillcolor='rgba(46, 134, 193, 0.2)'
+        )
+    )
+    
+    # Rote Null-Linie ("Pleite-Linie")
+    fig.add_hline(y=0, line_width=2, line_color="red", line_dash="dash")
+    
+    fig.update_layout(
+        title="Prognostizierte Vermögensentwicklung",
+        template="plotly_white",
+        hovermode="x unified",
+        margin=dict(t=50, b=20, l=20, r=20),
+        yaxis_title="Vermögen in Euro"
+    )
+    
     return fig

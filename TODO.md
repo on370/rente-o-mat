@@ -13,20 +13,29 @@
 - [x] **Zeitliche Entwicklung:** Umstellung auf Stacked Bar Chart mit detaillierten Quellen
 - [x] **Steuer-Analyse:** Optionale Anzeige der effektiven Steuerquote (%) im Trend-Chart
 - [x] Git-Housekeeping: .gitignore und README.md angelegt
+- [x] **Persistenz (JSON Export/Import)**: v2.0 mit Versionskontrolle
+- [x] **Steuer-Engine v2:** Multi-Year Tarife, Soli, Kirchensteuer, Abgeltungsteuer
+- [x] **SV-Engine v2:** Dynamische BBG, PV-Kinderstaffelung, bAV-Freibetrag
+- [x] **Dynamisierung:** Getrennte Inflation für Ausgaben, GRV und bAV
+- [x] **Vermögenskurve:** Neuer Tab mit kumulativer Kapitalentwicklung
 
-## ⏳ In Arbeit / Nächste Schritte
-- [ ] **Modul 3.6: Persistenz (JSON Export/Import)**
-    - [ ] Export der gesamten Session-Daten (Profil, Einnahmen, Ausgaben) als JSON-File
-    - [ ] Import-Funktion zum Wiederherstellen von gespeicherten Szenarien
-
-## 📅 Geplant (Spätere Sitzungen)
+## ⏳ In Arbeit / Nächste Schritte (Phase 3 & 4)
+- [ ] **Erweiterte Rentenlogik**
+    - [ ] Rentenabschläge/-zuschläge (0,3% pro Monat)
+    - [ ] Eingabe von Entgeltpunkten statt fixem Betrag
+    - [ ] Einmal-Cashflows (Abfindung, Erbe)
 - [ ] **Transparenz vorzeitiger Renteneintritt (Abschläge)**
     - [ ] Visualisierung des theoretischen vollen Rentenbetrags (67 Jahre) als Einkunft im Sankey und Trend-Chart
     - [ ] Visualisierung des Renten-Abschlags als roten Abzug/Defizit-Posten
 - [ ] **Steuersatz-Visualisierung**
     - [ ] Sinnvolle Visualisierung des ansteigenden Steuersatzes im Zeitverlauf
+
+## 📅 Geplant (Spätere Sitzungen)
 - [ ] **Modul 3.4: Erweiterte Steuer- & SV-Engine**
     - [ ] Präzise KV/PV Logik (KVdR vs. Freiwillig)
     - [ ] Abgeltungsteuer für Kapitalerträge
 - [ ] **Szenarien-Vergleich**
     - [ ] Gegenüberstellung von Modellen (z.B. "Früher in Rente" vs. "ATZ")
+- [ ] **Hinterbliebenenabsicherung** (Witwenrente)
+- [ ] **PDF-Report Export**
+- [ ] **PKV-Integration** (fixer Monatsbeitrag im Alter statt KVdR)

@@ -1,43 +1,96 @@
 """
 Steuer- und Abgabenlogik für das deutsche Rentensystem.
+Unterstützt EkSt-Tarife 2024 und 2025+ (§ 32a EStG),
+Solidaritätszuschlag, Kirchensteuer, Ertragsanteil und Abgeltungsteuer.
 """
 
-def berechne_einkommensteuer(zu_versteuerndes_einkommen):
-    """
-    Berechnung der deutschen Einkommensteuer (Tarif 2024) gemäß § 32a EStG.
-    Werte basierend auf den offiziellen BMF-Parametern 2024.
-    """
-    X = zu_versteuerndes_einkommen
-    if X <= 11604:
-        return 0
-    elif X <= 17005:
-        y = (X - 11604) / 10000
-        return (922.98 * y + 1400) * y
-    elif X <= 66760:
-        y = (X - 17005) / 10000
-        return (181.19 * y + 2397) * y + 1025.38
-    elif X <= 277825:
-        return 0.42 * X - 10602.13
-    else:
-        return 0.45 * X - 18936.88
+# --- EkSt-Tarifparameter nach Jahr ---
+# Quelle: BMF / Bundesgesetzblatt
+# Für unbekannte Zukunftsjahre wird der letzte bekannte Tarif verwendet.
+TARIF_PARAMETER = {
+    2024: {
+        "grundfreibetrag": 11604,
+        "zone2_ende": 17005,
+        "zone3_ende": 66760,
+        "zone4_ende": 277825,
+        "zone2_a": 922.98,
+        "zone2_b": 1400,
+        "zone3_a": 181.19,
+        "zone3_b": 2397,
+        "zone3_c": 1025.38,
+        "zone4_faktor": 0.42,
+        "zone4_abzug": 10602.13,
+        "zone5_faktor": 0.45,
+        "zone5_abzug": 18936.88,
+    },
+    2025: {
+        "grundfreibetrag": 12096,
+        "zone2_ende": 17443,
+        "zone3_ende": 66760,
+        "zone4_ende": 277825,
+        "zone2_a": 932.30,
+        "zone2_b": 1400,
+        "zone3_a": 181.19,
+        "zone3_b": 2397,
+        "zone3_c": 991.21,
+        "zone4_faktor": 0.42,
+        "zone4_abzug": 10636.31,
+        "zone5_faktor": 0.45,
+        "zone5_abzug": 18971.06,
+    },
+}
 
-def berechne_progressionsvorbehalt(zu_versteuerndes_einkommen, steuerfreier_betrag):
+def _get_tarif(jahr):
+    """Gibt die Tarifparameter für ein Jahr zurück. Für unbekannte Jahre wird der letzte bekannte Tarif verwendet."""
+    if jahr in TARIF_PARAMETER:
+        return TARIF_PARAMETER[jahr]
+    # Letzten bekannten Tarif nehmen
+    letzte_jahr = max(k for k in TARIF_PARAMETER.keys() if k <= jahr) if any(k <= jahr for k in TARIF_PARAMETER) else max(TARIF_PARAMETER.keys())
+    return TARIF_PARAMETER[letzte_jahr]
+
+
+def berechne_einkommensteuer(zu_versteuerndes_einkommen, jahr=2025):
+    """
+    Berechnung der deutschen Einkommensteuer gemäß § 32a EStG.
+    Tarif wird anhand des Jahres automatisch gewählt.
+    """
+    X = max(0, zu_versteuerndes_einkommen)
+    t = _get_tarif(jahr)
+
+    if X <= t["grundfreibetrag"]:
+        return 0.0
+    elif X <= t["zone2_ende"]:
+        y = (X - t["grundfreibetrag"]) / 10000
+        return (t["zone2_a"] * y + t["zone2_b"]) * y
+    elif X <= t["zone3_ende"]:
+        y = (X - t["zone2_ende"]) / 10000
+        return (t["zone3_a"] * y + t["zone3_b"]) * y + t["zone3_c"]
+    elif X <= t["zone4_ende"]:
+        return t["zone4_faktor"] * X - t["zone4_abzug"]
+    else:
+        return t["zone5_faktor"] * X - t["zone5_abzug"]
+
+
+def berechne_progressionsvorbehalt(zu_versteuerndes_einkommen, steuerfreier_betrag, jahr=2025):
     """
     Berechnet die Einkommensteuer unter Berücksichtigung des Progressionsvorbehalts (§ 32b EStG).
     """
     if zu_versteuerndes_einkommen <= 0:
-        return 0
-    
+        return 0.0
+
     fiktives_gesamteinkommen = max(0, zu_versteuerndes_einkommen + steuerfreier_betrag)
-    fiktive_steuer = berechne_einkommensteuer(fiktives_gesamteinkommen)
-    
+    fiktive_steuer = berechne_einkommensteuer(fiktives_gesamteinkommen, jahr)
+
     effektiver_steuersatz = fiktive_steuer / fiktives_gesamteinkommen if fiktives_gesamteinkommen > 0 else 0
     return effektiver_steuersatz * zu_versteuerndes_einkommen
 
+
 def berechne_rentensteuer_anteil(rentenbeginn_jahr):
     """
-    Ermittelt den steuerpflichtigen Anteil der Rente basierend auf dem Kohortenprinzip.
+    Ermittelt den steuerpflichtigen Anteil der gesetzlichen Rente basierend auf dem Kohortenprinzip.
     Ref: Wachstumschancengesetz (0,5% Steigerung ab 2023).
+    GILT NUR FÜR GRV (§ 22 Nr. 1 Satz 3 Buchst. a Doppelbuchst. aa EStG).
+    bAV ist zu 100% steuerpflichtig (§ 22 Nr. 5 EStG)!
     """
     if rentenbeginn_jahr <= 2005:
         return 50.0
@@ -46,6 +99,91 @@ def berechne_rentensteuer_anteil(rentenbeginn_jahr):
     elif rentenbeginn_jahr <= 2022:
         return 80.0 + (rentenbeginn_jahr - 2020) * 1.0
     else:
-        # Ab 2023 Steigerung um 0,5% pro Jahr
+        # Ab 2023 Steigerung um 0,5% pro Jahr (Wachstumschancengesetz)
         jahre_nach_2022 = rentenbeginn_jahr - 2022
         return min(100.0, 82.0 + jahre_nach_2022 * 0.5)
+
+
+# --- Solidaritätszuschlag (§ 3, 4 SolZG) ---
+# Freigrenze: Seit 2021 stark angehoben (partielle Abschaffung)
+SOLI_FREIGRENZE_SINGLE = 18130  # Jahressteuerbetrag (ab 2024)
+SOLI_SATZ = 0.055  # 5,5%
+# Milderungszone: 11,9% des Überschreitungsbetrags (bis max 5,5%)
+
+def berechne_soli(einkommensteuer_jahr):
+    """
+    Berechnet den Solidaritätszuschlag.
+    Seit 2021 nur noch für höhere Einkommen relevant.
+    """
+    if einkommensteuer_jahr <= SOLI_FREIGRENZE_SINGLE:
+        return 0.0
+
+    # Milderungszone: 11,9% des Differenzbetrags, max. 5,5% der EkSt
+    differenz = einkommensteuer_jahr - SOLI_FREIGRENZE_SINGLE
+    soli_milderung = differenz * 0.119
+    soli_voll = einkommensteuer_jahr * SOLI_SATZ
+    return min(soli_milderung, soli_voll)
+
+
+# --- Kirchensteuer ---
+def berechne_kirchensteuer(einkommensteuer_jahr, kirchensteuer_satz=0.0):
+    """
+    Berechnet die Kirchensteuer (8% oder 9% der EkSt, je nach Bundesland).
+    kirchensteuer_satz: 0.0 (keine), 0.08 (Bayern/BW), 0.09 (restliche Bundesländer)
+    """
+    return einkommensteuer_jahr * kirchensteuer_satz
+
+
+# --- Ertragsanteil für private Renten (§ 22 Nr. 1 Satz 3 Buchst. a Doppelbuchst. bb EStG) ---
+# Hängt vom Alter bei Beginn der Rente ab
+ERTRAGSANTEIL_TABELLE = {
+    55: 26, 56: 26, 57: 25, 58: 24, 59: 23,
+    60: 22, 61: 22, 62: 21, 63: 20, 64: 19,
+    65: 18, 66: 18, 67: 17, 68: 16, 69: 15,
+    70: 15, 71: 14, 72: 13, 73: 13, 74: 12,
+    75: 11, 76: 11, 77: 10, 78: 9, 79: 8,
+    80: 7, 81: 7, 82: 6, 83: 5, 84: 5,
+    85: 4, 86: 4, 87: 3, 88: 3, 89: 2,
+    90: 2, 91: 1, 92: 1, 93: 1, 94: 1, 95: 1,
+}
+
+def berechne_ertragsanteil(alter_bei_rentenbeginn):
+    """
+    Ermittelt den Ertragsanteil für private Renten basierend auf dem
+    Alter des Rentenberechtigten bei Beginn der Rente.
+    """
+    alter = int(alter_bei_rentenbeginn)
+    if alter < 55:
+        return 26  # Minimum in der Tabelle für jüngere
+    if alter > 95:
+        return 1
+    return ERTRAGSANTEIL_TABELLE.get(alter, 18)
+
+
+# --- Abgeltungsteuer für Kapitalerträge (§ 32d EStG) ---
+ABGELTUNGSTEUER_SATZ = 0.25  # 25%
+SPARERPAUSCHBETRAG_SINGLE = 1000  # seit 2023
+
+def berechne_abgeltungsteuer(kapitalertraege_jahr, kirchensteuer_satz=0.0, sparerpauschbetrag=None):
+    """
+    Berechnet die Abgeltungsteuer auf Kapitalerträge (§ 32d EStG).
+    Inkl. Soli und ggf. Kirchensteuer.
+    """
+    if sparerpauschbetrag is None:
+        sparerpauschbetrag = SPARERPAUSCHBETRAG_SINGLE
+
+    steuerpflichtig = max(0, kapitalertraege_jahr - sparerpauschbetrag)
+    if steuerpflichtig <= 0:
+        return 0.0
+
+    # Bei Kirchensteuer wird der AbgSt-Satz angepasst (§ 32d Abs. 1 S. 3 EStG)
+    if kirchensteuer_satz > 0:
+        effektiver_satz = ABGELTUNGSTEUER_SATZ / (1 + kirchensteuer_satz)
+    else:
+        effektiver_satz = ABGELTUNGSTEUER_SATZ
+
+    abgst = steuerpflichtig * effektiver_satz
+    soli = abgst * SOLI_SATZ  # Soli auf AbgSt (keine Freigrenze bei AbgSt)
+    kist = abgst * kirchensteuer_satz
+
+    return abgst + soli + kist

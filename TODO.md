@@ -20,6 +20,11 @@
     - [ ] Import-Funktion zum Wiederherstellen von gespeicherten Szenarien
 
 ## 📅 Geplant (Spätere Sitzungen)
+- [ ] **Transparenz vorzeitiger Renteneintritt (Abschläge)**
+    - [ ] Visualisierung des theoretischen vollen Rentenbetrags (67 Jahre) als Einkunft im Sankey und Trend-Chart
+    - [ ] Visualisierung des Renten-Abschlags als roten Abzug/Defizit-Posten
+- [ ] **Steuersatz-Visualisierung**
+    - [ ] Sinnvolle Visualisierung des ansteigenden Steuersatzes im Zeitverlauf
 - [ ] **Modul 3.4: Erweiterte Steuer- & SV-Engine**
     - [ ] Präzise KV/PV Logik (KVdR vs. Freiwillig)
     - [ ] Abgeltungsteuer für Kapitalerträge

@@ -58,7 +58,7 @@ with tab1:
     # Brutto-Aufschlüsselung im Sankey
     if res['Phase'] == "Aktiv":
         add_r("Arbeitseinkommen", "Brutto", p['aktuelles_brutto'])
-    elif res['Phase'] == "ATZ":
+    elif res['Phase'] in ["ATZ(A)", "ATZ(P)"]:
         h_br = p['aktuelles_brutto'] / 2
         auf = h_br * (p['atz_aufstockung_pct'] / 100)
         add_r("ATZ-Gehalt", "Brutto", h_br)

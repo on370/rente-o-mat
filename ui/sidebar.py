@@ -103,6 +103,16 @@ def render_sidebar():
         # --- MEILENSTEINE ---
         with st.expander("📅 Meilensteine", expanded=False):
             rentenbeginn = st.number_input("Rentenbeginn (Jahr)", value=2031, key="rentenbeginn_input")
+            
+            if "prev_rentenbeginn" not in st.session_state:
+                st.session_state.prev_rentenbeginn = rentenbeginn
+                
+            if rentenbeginn != st.session_state.prev_rentenbeginn:
+                for e in st.session_state.einnahmen:
+                    if e["start"] == st.session_state.prev_rentenbeginn:
+                        e["start"] = rentenbeginn
+                st.session_state.prev_rentenbeginn = rentenbeginn
+
             atz_simulieren = st.checkbox("ATZ einplanen", value=False, key="atz_sim_input")
             if atz_simulieren:
                 atz_dauer = st.slider("ATZ Dauer (Jahre)", 1, 10, 6, key="atz_dauer_input")

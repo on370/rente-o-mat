@@ -31,15 +31,17 @@
 
 ## ⏳ In Arbeit / Nächste Schritte (Phase 3 & 4)
 - [ ] **Erweiterte Rentenlogik**
-    - [ ] Dynamische Regelaltersgrenze (Altersgrenze abhängig vom Geburtsjahr berechnen, nicht fix 67)
+    - [x] Dynamische Regelaltersgrenze (Altersgrenze abhängig vom Geburtsjahr berechnen, nicht fix 67)
     - [ ] Eingabe von Entgeltpunkten statt fixem Betrag
 
 ## 📅 Geplant (Spätere Sitzungen)
+- [ ] **100% Transparenz & Vertrauen**
+    - [ ] **Prüf- und Audit-Modus:** Neuer Tab, in dem der Nutzer ein Jahr wählt und ein detailliertes, mathematisches Protokoll aller Rechenschritte als "Beweis" erhält.
+    - [ ] **PDF-Report Export:** Vollumfänglicher Bericht mit Charts, Tabellen und Methodik/Rechtsgrundlagen-Anhang.
 - [ ] **Modul 3.4: Erweiterte Steuer- & SV-Engine**
     - [ ] Präzise KV/PV Logik (KVdR vs. Freiwillig)
     - [ ] Abgeltungsteuer für Kapitalerträge
 - [ ] **Szenarien-Vergleich**
     - [ ] Gegenüberstellung von Modellen (z.B. "Früher in Rente" vs. "ATZ")
 - [ ] **Hinterbliebenenabsicherung** (Witwenrente)
-- [ ] **PDF-Report Export**
 - [ ] **PKV-Integration** (fixer Monatsbeitrag im Alter statt KVdR)

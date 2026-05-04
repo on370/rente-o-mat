@@ -15,3 +15,6 @@ Diese Regeln sind verbindlich ("Eiserne Regeln") für die Weiterentwicklung des 
 
 ## 3. Historie (Auszug)
 - build 0020: Start der manuellen Build-Zählung, Integration Disclaimer-Dialog, Versionierung fixiert.
+- build 0021: Umstellung auf statische Build-ID.
+- build 0022: Dynamische Regelaltersgrenze (logic/rentenrecht.py) und Button-Zentrierung.
+- build 0023: Fix Slider-Bug bei ATZ-Dauer (min==max).

@@ -1,0 +1,48 @@
+"""
+Modul für rentenrechtliche Berechnungen (z.B. Regelaltersgrenze, Abschläge).
+"""
+
+def berechne_regelaltersgrenze(geburtsjahr):
+    """
+    Berechnet die gesetzliche Regelaltersgrenze basierend auf dem Geburtsjahr.
+    Gibt ein Tupel zurück: (Jahre, Monate)
+    """
+    if geburtsjahr < 1947:
+        return (65, 0)
+    elif geburtsjahr <= 1958:
+        # 1947 -> 65 Jahre + 1 Monat, ..., 1958 -> 65 Jahre + 12 Monate (66 Jahre)
+        monate_extra = geburtsjahr - 1946
+        return (65 + monate_extra // 12, monate_extra % 12)
+    elif geburtsjahr <= 1963:
+        # 1959 -> 66 Jahre + 2 Monate, ..., 1963 -> 66 Jahre + 10 Monate
+        monate_extra = (geburtsjahr - 1958) * 2
+        return (66 + monate_extra // 12, monate_extra % 12)
+    else:
+        # 1964 und später
+        return (67, 0)
+
+def format_regelaltersgrenze(geburtsjahr):
+    """
+    Gibt die Regelaltersgrenze als formatierten String zurück.
+    """
+    jahre, monate = berechne_regelaltersgrenze(geburtsjahr)
+    if monate == 0:
+        return f"{jahre} Jahre"
+    else:
+        return f"{jahre} Jahre, {monate} Monate"
+
+def berechne_monate_frueher(geburtsjahr, rentenbeginn_jahr):
+    """
+    Berechnet, wie viele Monate vor der Regelaltersgrenze der Renteneintritt erfolgt.
+    Nimmt vereinfachend an, dass der Rentenbeginn am Geburtstag erfolgt.
+    """
+    regel_jahre, regel_monate = berechne_regelaltersgrenze(geburtsjahr)
+    
+    # Alter beim Rentenbeginn (in ganzen Jahren)
+    alter_jahre = rentenbeginn_jahr - geburtsjahr
+    
+    total_regel_monate = regel_jahre * 12 + regel_monate
+    total_alter_monate = alter_jahre * 12
+    
+    monate_frueher = max(0, total_regel_monate - total_alter_monate)
+    return monate_frueher

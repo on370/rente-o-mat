@@ -1,6 +1,7 @@
 import streamlit as st
 from datetime import datetime
 from data.persistence import export_settings, import_settings
+from logic.rentenrecht import berechne_regelaltersgrenze, format_regelaltersgrenze, berechne_monate_frueher
 
 def render_sidebar():
     """Rendert die Sidebar des Rente-O-Mat in logischer Reihenfolge."""
@@ -69,7 +70,8 @@ def render_sidebar():
                 st.rerun()
 
         # --- 3. MEILENSTEINE ---
-        default_rentenbeginn = geburtsjahr + 67
+        regel_jahre, _ = berechne_regelaltersgrenze(geburtsjahr)
+        default_rentenbeginn = geburtsjahr + regel_jahre
         with st.expander("📅 Meilensteine", expanded=True):
             rentenbeginn = st.number_input("Rentenbeginn (Jahr)", value=st.session_state.get("rentenbeginn_input", default_rentenbeginn), min_value=aktuelles_jahr, key="rentenbeginn_input", help="Das Jahr deines geplanten Renteneintritts. Jeder Monat vor der Regelaltersgrenze führt zu Abschlägen!")
             
@@ -85,7 +87,12 @@ def render_sidebar():
             atz_simulieren = st.checkbox("ATZ einplanen", value=st.session_state.get("atz_sim_input", False), key="atz_sim_input", help="Simuliert eine Altersteilzeit (Blockmodell) direkt vor dem Rentenbeginn.")
             if atz_simulieren:
                 max_atz = max(1, rentenbeginn - aktuelles_jahr)
-                atz_dauer = st.slider("ATZ Dauer (Jahre)", 1, max_atz, min(6, max_atz), key="atz_dauer_input")
+                if max_atz > 1:
+                    atz_dauer = st.slider("ATZ Dauer (Jahre)", 1, max_atz, min(6, max_atz), key="atz_dauer_input")
+                else:
+                    atz_dauer = 1
+                    st.write(f"ATZ Dauer: **{atz_dauer} Jahr** (begrenzt durch Rentenbeginn)")
+                
                 atz_start = rentenbeginn - atz_dauer
                 st.info(f"ATZ-Beginn: {atz_start}")
                 atz_ende = rentenbeginn
@@ -95,14 +102,14 @@ def render_sidebar():
 
             # --- INFOBOX FÜR ABSCHLAG UND STEUER ---
             st.divider()
-            alter_bei_rente = rentenbeginn - geburtsjahr
-            monate_frueher = max(0, (67 - alter_bei_rente) * 12)
+            monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn)
             abschlag_pct = min(14.4, monate_frueher * 0.3)
             
             from logic.taxes import berechne_rentensteuer_anteil
             steuer_anteil = berechne_rentensteuer_anteil(rentenbeginn)
             
-            st.info(f"**Rentenabschlag (GRV):** {abschlag_pct:.1f} %\n\n**Steuerpflichtiger Anteil:** {steuer_anteil:.1f} %")
+            regelaltersgrenze_str = format_regelaltersgrenze(geburtsjahr)
+            st.info(f"**Regelaltersgrenze:** {regelaltersgrenze_str}\n\n**Rentenabschlag (GRV):** {abschlag_pct:.1f} %\n\n**Steuerpflichtiger Anteil:** {steuer_anteil:.1f} %")
 
         # --- 4. FINANZEN AKTUELL ---
         with st.expander("💶 Finanzen Aktuell", expanded=False):
@@ -171,7 +178,23 @@ def render_sidebar():
                     f_start = st.number_input("Von Jahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
                     f_ende = st.number_input("Bis Jahr", value=int(current_e["ende"]), min_value=f_start)
                 elif f_typ == "Gesetzlich":
-                    f_betrag = st.number_input("Betrag (€/mtl., theor. voll bei 67)", value=float(current_e["betrag"]), min_value=0.0)
+                    eingabe_modus_options = ["Euro-Betrag", "Entgeltpunkte (EP)"]
+                    current_modus = current_e.get("eingabe_modus", "euro")
+                    eingabe_modus_idx = 0 if current_modus == "euro" else 1
+                    
+                    f_eingabe_modus_radio = st.radio("Eingabemodus", eingabe_modus_options, index=eingabe_modus_idx, horizontal=True)
+                    
+                    if f_eingabe_modus_radio == "Entgeltpunkte (EP)":
+                        f_eingabe_modus = "punkte"
+                        f_punkte = st.number_input("Anzahl Entgeltpunkte (lt. Renteninformation)", value=float(current_e.get("punkte", 40.0)), min_value=0.0, step=0.1)
+                        from config import RENTENWERT_AKTUELL
+                        f_betrag = f_punkte * RENTENWERT_AKTUELL
+                        st.info(f"Basiswert: **{f_betrag:.2f} €/mtl.** (bei aktuellem Rentenwert, vor Abschlägen)")
+                    else:
+                        f_eingabe_modus = "euro"
+                        f_punkte = 0.0
+                        f_betrag = st.number_input("Betrag (€/mtl., theor. voll bei Regelaltersgrenze)", value=float(current_e["betrag"]), min_value=0.0)
+                        
                     f_start = st.number_input("Von Jahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
                     f_ende = st.number_input("Bis Jahr", value=int(current_e["ende"]), min_value=f_start)
                 else:
@@ -181,6 +204,9 @@ def render_sidebar():
                 c1, c2 = st.columns(2)
                 if c1.button("💾 Speichern"):
                     new_data = {"name": f_name, "betrag": f_betrag, "typ": f_typ, "start": f_start, "ende": f_ende}
+                    if f_typ == "Gesetzlich":
+                        new_data["eingabe_modus"] = f_eingabe_modus
+                        new_data["punkte"] = f_punkte
                     if is_edit: st.session_state.einnahmen[st.session_state.edit_idx] = new_data
                     else: st.session_state.einnahmen.append(new_data)
                     st.session_state.edit_idx, st.session_state.show_add_form = None, False

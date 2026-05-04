@@ -10,6 +10,7 @@ from logic.taxes import (
     berechne_ertragsanteil, berechne_abgeltungsteuer, berechne_fuenftelregelung
 )
 from logic.sozialversicherung import berechne_sv_aktiv, berechne_sv_atz, berechne_sv_rentner
+from logic.rentenrecht import berechne_monate_frueher
 
 
 def get_phase(jahr, atz_simulieren, atz_start, rentenbeginn):
@@ -119,9 +120,12 @@ def calculate_financials_for_year(jahr, params):
 
                 # Dynamisierung je nach Typ
                 if e["typ"] == "Gesetzlich":
+                    if e.get("eingabe_modus") == "punkte":
+                        from config import RENTENWERT_AKTUELL
+                        val = e.get("punkte", 0.0) * RENTENWERT_AKTUELL
+                        
                     val = _dynamisiere_betrag(val, e["start"], jahr, rentenanpassung_rate)
-                    regelaltersgrenze = 67
-                    monate_frueher = max(0, (regelaltersgrenze - alter_bei_rentenbeginn) * 12)
+                    monate_frueher = berechne_monate_frueher(geburtsjahr, params['rentenbeginn'])
                     abschlag_pct = min(14.4, monate_frueher * 0.3)
                     abschlag_betrag = val * (abschlag_pct / 100)
                     rentenabschlag_gesamt += abschlag_betrag

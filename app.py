@@ -17,9 +17,11 @@ if not st.session_state.disclaimer_accepted:
     **DISCLAIMER:** Achtung, der Renten-Planer ist noch in der Entwicklung und kann fehlerhaft oder unvollständig sein. 
     Alle Angaben müssen durch den/die Nutzer:in überprüft werden. Benutzung auf eigenes Risiko.
     """)
-    if st.button("✅ Einverstanden", use_container_width=True):
-        st.session_state.disclaimer_accepted = True
-        st.rerun()
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("✅ Einverstanden", use_container_width=True):
+            st.session_state.disclaimer_accepted = True
+            st.rerun()
     st.stop()
 
 st.title("🛡️ Rente-O-Mat: Der Renten-Planer")

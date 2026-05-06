@@ -8,6 +8,16 @@ def render_sidebar():
     
     aktuelles_jahr = datetime.now().year
     
+    # --- 0. INITIALISIERUNG ---
+    if "einnahmen" not in st.session_state:
+        # Standard-Werte für Erststart
+        regel_jahre, _ = berechne_regelaltersgrenze(1965)
+        def_beginn = 1965 + regel_jahre
+        st.session_state.einnahmen = [
+            {"name": "Gesetzliche Rente", "betrag": 2200.0, "typ": "Gesetzlich", "start": def_beginn, "ende": 2065},
+            {"name": "Betriebsrente", "betrag": 600.0, "typ": "bAV", "start": def_beginn, "ende": 2065},
+        ]
+    
     # --- 1. IMPORT-LOGIK (Muss vor dem Rendern der Widgets laufen) ---
     if st.session_state.get("do_import") and st.session_state.get("import_file"):
         import_settings(st.session_state.import_file)
@@ -109,7 +119,70 @@ def render_sidebar():
             steuer_anteil = berechne_rentensteuer_anteil(rentenbeginn)
             
             regelaltersgrenze_str = format_regelaltersgrenze(geburtsjahr)
-            st.info(f"**Regelaltersgrenze:** {regelaltersgrenze_str}\n\n**Rentenabschlag (GRV):** {abschlag_pct:.1f} %\n\n**Steuerpflichtiger Anteil:** {steuer_anteil:.1f} %")
+            
+            # --- NEU: Präzise EP-Analyse für die Infobox ---
+            from logic.rentenrecht import berechne_ep_pro_jahr, berechne_beitragsverlust_logic
+            from config import RENTENWERT_AKTUELL
+            
+            brutto_fuer_ep = st.session_state.get("brutto_key", 6000.0)
+            ep_pro_jahr = berechne_ep_pro_jahr(brutto_fuer_ep, aktuelles_jahr)
+            bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr, RENTENWERT_AKTUELL)
+            
+            jahre_bis_beginn = max(0, rentenbeginn - aktuelles_jahr)
+            ep_zuwachs = jahre_bis_beginn * ep_pro_jahr
+            
+            # --- NEU: Break-Even Berechnung für Infobox ---
+            from logic.engine import calculate_break_even_data
+            
+            # Params-Pack für Break-Even (muss aktuellste Werte enthalten)
+            be_params = {
+                "geburtsjahr": geburtsjahr,
+                "aktuelles_jahr": aktuelles_jahr,
+                "rentenbeginn": rentenbeginn,
+                "aktuelles_brutto": st.session_state.get("brutto_key", 6000.0),
+                "kinderzahl": kinderzahl,
+                "kirchensteuer_satz": kirchensteuer_satz,
+                "einnahmen": st.session_state.einnahmen,
+                "rentenanpassung_rate": st.session_state.get("renten_anp_key", 2.0),
+                "inflation_rate": st.session_state.get("infl_rate_key", 2.0)
+            }
+            
+            try:
+                _, be_jahr, be_alter = calculate_break_even_data(be_params)
+                be_info = f"{be_alter} J. ({be_jahr})" if be_jahr else "Nicht erreicht"
+            except:
+                be_info = "Berechnung läuft..."
+
+            info_text = f"""
+            **Regelaltersgrenze:** {regelaltersgrenze_str}
+            
+            **Analyse vorzeitiger Eintritt:**
+            * **Rentenabschlag (GRV):** {abschlag_pct:.1f} %
+            * **Beitragsverlust:** -{bv_res['ep']:.2f} EP / -{bv_res['euro']:.2f} € mtl.
+            * **EP-Zuwachs bis Start:** +{ep_zuwachs:.2f} EP
+            * **Break-Even (vs. RAG):** {be_info}
+            
+            **Steuerpflichtiger Anteil:** {steuer_anteil:.1f} %
+            """
+            st.info(info_text)
+            
+            with st.popover("❓ Erläuterung der Werte"):
+                st.markdown(f"""
+                **Rentenabschlag ({abschlag_pct:.1f} %):**
+                Dies ist der *versicherungsmathematische Abschlag*. Da du früher in Rente gehst und diese somit voraussichtlich länger beziehst, wird die Rente lebenslang um 0,3 % pro Monat gekürzt.
+                
+                **Beitragsverlust (-{bv_res['ep']:.2f} EP):**
+                Dies sind die Rentenpunkte, die du *nicht* mehr sammelst, weil du vor der Regelaltersgrenze aufhörst zu arbeiten. In dieser Zeit zahlst du keine Beiträge mehr ein.
+                
+                **EP-Zuwachs bis Start (+{ep_zuwachs:.2f} EP):**
+                Das ist die Prognose der Punkte, die du ab heute bis zu deinem Rentenbeginn in {jahre_bis_beginn} Jahren voraussichtlich noch durch deine Arbeit verdienen wirst.
+                
+                **Steuerpflichtiger Anteil ({steuer_anteil:.1f} %):**
+                Der Teil deiner gesetzlichen Rente, der mit deinem persönlichen Steuersatz versteuert werden muss. Dieser Anteil wird durch das Jahr deines Renteneintritts festgeschrieben.
+                
+                **Break-Even ({be_info}):**
+                Das Alter, ab dem die Summe der erhaltenen Regelrente (Szenario B) die Summe der früher bezogenen Frührente (Szenario A) übersteigt. Erst ab diesem Alter "lohnt" sich der spätere Rentenbeginn rein finanziell bezogen auf die gesetzliche Rente.
+                """)
 
         # --- 4. FINANZEN AKTUELL ---
         with st.expander("💶 Finanzen Aktuell", expanded=False):
@@ -145,12 +218,6 @@ def render_sidebar():
             show_values = st.checkbox("Werte im Sankey zeigen", value=st.session_state.get("show_vals_key", True), key="show_vals_key")
 
         # --- 5. EINNAHMEQUELLEN ---
-        if "einnahmen" not in st.session_state:
-            st.session_state.einnahmen = [
-                {"name": "Gesetzliche Rente", "betrag": 2200.0, "typ": "Gesetzlich", "start": default_rentenbeginn, "ende": 2065},
-                {"name": "Betriebsrente", "betrag": 600.0, "typ": "bAV", "start": default_rentenbeginn, "ende": 2065},
-            ]
-
         with st.expander("💰 Einnahmequellen (Rente)", expanded=False):
             if "edit_idx" not in st.session_state: st.session_state.edit_idx = None
             if "show_add_form" not in st.session_state: st.session_state.show_add_form = False

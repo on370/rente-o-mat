@@ -46,3 +46,27 @@ def berechne_monate_frueher(geburtsjahr, rentenbeginn_jahr):
     
     monate_frueher = max(0, total_regel_monate - total_alter_monate)
     return monate_frueher
+
+def berechne_ep_pro_jahr(brutto_monat, jahr):
+    """
+    Berechnet die pro Jahr gesammelten Entgeltpunkte basierend auf dem Brutto
+    und dem Durchschnittsentgelt, unter Berücksichtigung der BBG.
+    """
+    from logic.sozialversicherung import _get_sv_params
+    from config import DURCHSCHNITTSENTGELT_AKTUELL
+    
+    p = _get_sv_params(jahr)
+    jahresbrutto_gedeckelt = min(brutto_monat, p["bbg_rv"]) * 12
+    return jahresbrutto_gedeckelt / DURCHSCHNITTSENTGELT_AKTUELL
+
+def berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr, rentenwert):
+    """
+    Berechnet den Beitragsverlust (fehlende EP) in Euro pro Monat.
+    """
+    jahre_frueher = monate_frueher / 12
+    fehlende_ep = jahre_frueher * ep_pro_jahr
+    loss_euro = fehlende_ep * rentenwert
+    return {
+        "euro": loss_euro,
+        "ep": fehlende_ep
+    }

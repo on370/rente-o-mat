@@ -1,7 +1,7 @@
 import streamlit as st
-from logic.engine import calculate_financials_for_year, generate_trend_data
 from ui.sidebar import render_sidebar
-from ui.charts import create_sankey, create_trend_chart, create_wealth_chart
+from ui.charts import create_sankey, create_trend_chart, create_wealth_chart, create_break_even_chart
+from logic.engine import calculate_financials_for_year, generate_trend_data, calculate_break_even_data
 from config import FULL_VERSION
 
 st.set_page_config(page_title="Rente-O-Mat PRO", layout="wide")
@@ -31,7 +31,7 @@ st.caption(FULL_VERSION)
 p = render_sidebar()
 
 # --- HAUPTBEREICH (TABS) ---
-tab1, tab2, tab3 = st.tabs(["📊 Sankey-Analyse", "📈 Zeitliche Entwicklung", "💰 Vermögensentwicklung"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Sankey-Analyse", "📈 Zeitliche Entwicklung", "💰 Vermögensentwicklung", "⚖️ Strategie-Check"])
 
 # --- TAB 1: SANKEY ---
 with tab1:
@@ -96,6 +96,8 @@ with tab1:
                 add_r(e["name"], "Brutto", val)
 
     # Abzüge aufschlüsseln
+    if res.get('Beitragsverlust', 0) > 0:
+        add_r("Brutto", "Beitragsverlust", res['Beitragsverlust'])
     if res.get('Rentenabschlag', 0) > 0:
         add_r("Brutto", "Rentenabschlag", res['Rentenabschlag'])
     if res['EkSt'] > 0:
@@ -173,6 +175,32 @@ with tab3:
         df_trend = generate_trend_data(jahre, p)
         
     st.plotly_chart(create_wealth_chart(df_trend, p['startvermoegen'], p['kapitalrendite']), use_container_width=True)
+
+# --- TAB 4: STRATEGIE ---
+with tab4:
+    st.subheader("Wann lohnt sich der spätere Renteneintritt?")
+    st.info("""
+    Diese Analyse vergleicht deinen gewählten Rentenbeginn mit dem gesetzlichen Regelrenteneintritt. 
+    Dargestellt wird die Summe der bis zum jeweiligen Alter ausgezahlten Netto-Rentenbeträge (gesetzliche Rente).
+    """)
+    
+    
+    try:
+        df_be, be_jahr, be_alter = calculate_break_even_data(p)
+        
+        if be_jahr:
+            col1, col2 = st.columns(2)
+            col1.metric("Break-Even Alter", f"{be_alter} Jahre")
+            col2.metric("Break-Even Jahr", f"{be_jahr}")
+            
+            st.success(f"Ab dem Jahr **{be_jahr}** (Alter **{be_alter}**) hast du durch die höhere monatliche Regelrente insgesamt mehr Geld erhalten als durch den früheren, aber geringeren Rentenbezug.")
+        else:
+            st.warning("Kein Break-Even-Punkt innerhalb der Simulation (bis Alter 100) gefunden. Ein früherer Eintritt scheint in diesem Szenario langfristig vorteilhafter oder der Unterschied ist zu gering.")
+
+        st.plotly_chart(create_break_even_chart(df_be, be_alter), use_container_width=True)
+    except Exception as e:
+        st.error(f"Fehler bei der Strategie-Berechnung: {e}")
+        st.info("Dies kann an fehlenden Daten in einer importierten Datei liegen. Bitte prüfe deine Eingaben in der Sidebar.")
 
 # --- FOOTER & DISCLAIMER ---
 st.divider()

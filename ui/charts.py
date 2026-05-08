@@ -70,7 +70,7 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     
     # 1. Gestapelte Balken für Einkommensquellen
     exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder"]
-    income_cols = [c for c in df.columns if c not in exclude_cols]
+    income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_")]
     
     # Professionelle Farbpalette für Einkommensquellen (Türkis/Blau-Töne)
     color_sequence = ["#1ABC9C", "#2E86C1", "#17A589", "#2471A3", "#138D75", "#1F618D"]

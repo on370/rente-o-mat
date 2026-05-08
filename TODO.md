@@ -14,6 +14,7 @@
 - [x] **Steuer-Analyse:** Optionale Anzeige der effektiven Steuerquote (%) im Trend-Chart
 - [x] Git-Housekeeping: .gitignore und README.md angelegt
 - [x] **Persistenz (JSON Export/Import)**: v2.0 mit Versionskontrolle
+- [ ] **Baseline-Persistenz & Time-Drift**: v3.0 (siehe [Konzept](docs/konzept_baseline_persistenz.md))
 - [x] **Steuer-Engine v2:** Multi-Year Tarife, Soli, Kirchensteuer, Abgeltungsteuer
 - [x] **SV-Engine v2:** Dynamische BBG, PV-Kinderstaffelung, bAV-Freibetrag
 - [x] **Dynamisierung:** Getrennte Inflation für Ausgaben, GRV und bAV
@@ -36,6 +37,9 @@
     - [x] Info-Box mit Tooltips zur Erläuterung der Renten-Details ergänzt
 
 ## ⏳ In Arbeit / Nächste Schritte (Phase 3 & 4)
+- [ ] **Behebung kritischer Audit-Befunde (Build 0038)**
+    - [x] K1: Korrektur EkSt-Berechnung (zvE vs. Brutto)
+    - [ ] K2-K7: Weitere Berechnungsfehler (Rentenwert, RAG-Monate, etc.)
 - [ ] **Befristete Ausgaben (Kredite/Unterhalt)**
     - [ ] UI-Komponente zum Hinzufügen von Ausgaben mit Enddatum
     - [ ] Engine-Logik zur zeitlichen Begrenzung von Ausgaben
@@ -46,6 +50,7 @@
     - [ ] Verwaltung mehrerer benannter Vermögenswerte unter "Finanzen Aktuell"
     - [ ] Individuelle Verzinsung pro Vermögenswert
     - [ ] Anbindung bAV-Einmalzahlung (siehe [Konzept](docs/konzept_bav_vermoegen.md))
+    - [ ] Umstellung auf Closed-Loop-Simulation (siehe [Konzept](docs/konzept_vermoegenswerte_closed_loop.md))
 
 ## 📅 Geplant (Spätere Sitzungen)
 - [ ] **100% Transparenz & Vertrauen**

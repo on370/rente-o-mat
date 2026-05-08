@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime
 from data.persistence import export_settings, import_settings
 from logic.rentenrecht import berechne_regelaltersgrenze, format_regelaltersgrenze, berechne_monate_frueher
+from config import DATENSCHUTZ_INFO
 
 def render_sidebar():
     """Rendert die Sidebar des Rente-O-Mat in logischer Reihenfolge."""
@@ -70,11 +71,12 @@ def render_sidebar():
                 data=json_str, 
                 file_name=f"R-O-M_{nutzer_name.replace(' ', '_')}.json", 
                 mime="application/json", 
-                use_container_width=True
+                width='stretch',
+                help=DATENSCHUTZ_INFO
             )
             
-            uploaded_file = st.file_uploader("Import", type=["json"], key="json_uploader_widget")
-            if uploaded_file and st.button("Importieren", use_container_width=True):
+            uploaded_file = st.file_uploader("Import", type=["json"], key="json_uploader_widget", help=DATENSCHUTZ_INFO)
+            if uploaded_file and st.button("Importieren", width='stretch'):
                 st.session_state.import_file = uploaded_file
                 st.session_state.do_import = True
                 st.rerun()
@@ -124,12 +126,16 @@ def render_sidebar():
             from logic.rentenrecht import berechne_ep_pro_jahr, berechne_beitragsverlust_logic
             from config import RENTENWERT_AKTUELL
             
+            rentenanpassung_rate = st.session_state.get("renten_anp_key", 2.0)
             brutto_fuer_ep = st.session_state.get("brutto_key", 6000.0)
             ep_pro_jahr = berechne_ep_pro_jahr(brutto_fuer_ep, aktuelles_jahr)
-            bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr, RENTENWERT_AKTUELL)
             
             jahre_bis_beginn = max(0, rentenbeginn - aktuelles_jahr)
             ep_zuwachs = jahre_bis_beginn * ep_pro_jahr
+            
+            # K2: Rentenwert projizieren für Infobox
+            rw_proj = RENTENWERT_AKTUELL * (1 + rentenanpassung_rate / 100) ** jahre_bis_beginn
+            bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr, rw_proj)
             
             # --- NEU: Break-Even Berechnung für Infobox ---
             from logic.engine import calculate_break_even_data
@@ -179,6 +185,9 @@ def render_sidebar():
                 
                 **Steuerpflichtiger Anteil ({steuer_anteil:.1f} %):**
                 Der Teil deiner gesetzlichen Rente, der mit deinem persönlichen Steuersatz versteuert werden muss. Dieser Anteil wird durch das Jahr deines Renteneintritts festgeschrieben.
+                
+                **Netto-Berechnung (zvE):**
+                Deine Steuern werden nicht auf das volle Brutto, sondern auf das **zu versteuernde Einkommen (zvE)** berechnet. Wir ziehen automatisch Vorsorgeaufwendungen (RV, KV, PV) und Pauschbeträge (Werbungskosten 1.230€) ab, um ein realistisches Netto zu ermitteln.
                 
                 **Break-Even ({be_info}):**
                 Das Alter, ab dem die Summe der erhaltenen Regelrente (Szenario B) die Summe der früher bezogenen Frührente (Szenario A) übersteigt. Erst ab diesem Alter "lohnt" sich der spätere Rentenbeginn rein finanziell bezogen auf die gesetzliche Rente.
@@ -260,7 +269,7 @@ def render_sidebar():
                     else:
                         f_eingabe_modus = "euro"
                         f_punkte = 0.0
-                        f_betrag = st.number_input("Betrag (€/mtl., theor. voll bei Regelaltersgrenze)", value=float(current_e["betrag"]), min_value=0.0)
+                        f_betrag = st.number_input("Betrag (€/mtl., heutige Anwartschaft lt. Renteninfo)", value=float(current_e["betrag"]), min_value=0.0, help="Nimm hier den Wert 'Bisher erreichte Rentenanwartschaft'. Der Rente-O-Mat berechnet die Hochrechnung mit der gewählten Rate (0, 1, 2%) dann automatisch.")
                         
                     f_start = st.number_input("Von Jahr", value=int(current_e["start"]), min_value=aktuelles_jahr)
                     f_ende = st.number_input("Bis Jahr", value=int(current_e["ende"]), min_value=f_start)
@@ -306,7 +315,20 @@ def render_sidebar():
         with st.expander("⚙️ Annahmen (Dynamik)", expanded=False):
             st.markdown("**Inflationsraten (% p.a.)**")
             infl_rate = st.slider("Ausgaben (Allg. Inflation)", 0.0, 5.0, st.session_state.get("infl_rate_key", 2.0), 0.1, key="infl_rate_key", help="Jährliche Steigerung aller Ausgaben")
-            renten_anp = st.slider("Gesetzliche Rente", 0.0, 5.0, st.session_state.get("renten_anp_key", 2.0), 0.1, key="renten_anp_key", help="Jährliche Anpassung der GRV")
+            
+            anp_options = {"0% (Pessimistisch)": 0.0, "1% (Moderat)": 1.0, "2% (Standard)": 2.0}
+            default_idx = 2 # 2% ist Standard
+            
+            # Falls ein Wert aus einer Datei geladen wurde, der nicht 0, 1 oder 2 ist, nehmen wir den nächsten
+            stored_val = st.session_state.get("renten_anp_key", 2.0)
+            if stored_val == 0.0: default_idx = 0
+            elif stored_val == 1.0: default_idx = 1
+            
+            anp_label = st.selectbox("Gesetzliche Rente (Anpassung)", list(anp_options.keys()), index=default_idx, key="renten_anp_display", help="Jährliche Anpassung der GRV. Wird auch zur Projektion des Rentenwerts bis zum Start verwendet (DRV-Standard).")
+            renten_anp = anp_options[anp_label]
+            st.session_state["renten_anp_key"] = renten_anp # Für Export sichern
+            st.caption(f"Aktuelle Rate: {renten_anp}% p.a.")
+            
             bav_anp = st.slider("Betriebsrente (bAV)", 0.0, 3.0, st.session_state.get("bav_anp_key", 1.0), 0.1, key="bav_anp_key", help="Jährliche garantierte Anpassung der bAV")
             
             st.divider()

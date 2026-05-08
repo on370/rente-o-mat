@@ -152,3 +152,25 @@ def berechne_sv_rentner(einnahmen_liste, jahr, kinderzahl=0):
         sv_gesamt += sv
 
     return {"Gesamt": sv_gesamt, "Details": sv_details}
+
+def berechne_vorsorgeaufwendungen_steuerlich(brutto_monatlich, jahr, phase="Aktiv"):
+    """
+    Berechnet die steuerlich abziehbaren Vorsorgeaufwendungen (vereinfachte Näherung).
+    Aktiv: RV (AN+AG voll) + KV/PV (AN-Anteil Basis).
+    Rente: KV/PV (AN-Anteil).
+    """
+    p = _get_sv_params(jahr)
+    
+    if phase == "Aktiv":
+        # RV ist seit 2023 zu 100% abziehbar (AN + AG Anteil)
+        rv_beitrag_an = min(brutto_monatlich, p["bbg_rv"]) * p["rate_rv_an"]
+        rv_abzug = rv_beitrag_an * 2 # AN + AG Anteil
+        
+        # KV/PV: Nur Basisabsicherung. Vereinfachung: 96% der AN-Beiträge
+        kv_beitrag_an = min(brutto_monatlich, p["bbg_kv"]) * (p["rate_kv_an"] + p["rate_kv_zusatz"])
+        pv_beitrag_an = min(brutto_monatlich, p["bbg_kv"]) * p["rate_pv_basis"] # Ohne kinderlos-Zuschlag als Basis
+        kv_pv_abzug = (kv_beitrag_an + pv_beitrag_an) * 0.96
+        
+        return (rv_abzug + kv_pv_abzug) * 12
+    
+    return 0.0

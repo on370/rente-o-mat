@@ -2,7 +2,7 @@ import streamlit as st
 from ui.sidebar import render_sidebar
 from ui.charts import create_sankey, create_trend_chart, create_wealth_chart, create_break_even_chart
 from logic.engine import calculate_financials_for_year, generate_trend_data, calculate_break_even_data
-from config import FULL_VERSION
+from config import FULL_VERSION, DATENSCHUTZ_INFO
 
 st.set_page_config(page_title="Rente-O-Mat PRO", layout="wide")
 
@@ -17,9 +17,10 @@ if not st.session_state.disclaimer_accepted:
     **DISCLAIMER:** Achtung, der Renten-Planer ist noch in der Entwicklung und kann fehlerhaft oder unvollständig sein. 
     Alle Angaben müssen durch den/die Nutzer:in überprüft werden. Benutzung auf eigenes Risiko.
     """)
+    st.info(DATENSCHUTZ_INFO)
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        if st.button("✅ Einverstanden", use_container_width=True):
+        if st.button("✅ Einverstanden", width='stretch'):
             st.session_state.disclaimer_accepted = True
             st.rerun()
     st.stop()
@@ -29,6 +30,10 @@ st.caption(FULL_VERSION)
 
 # --- SIDEBAR & PARAMETER ---
 p = render_sidebar()
+
+# --- DATEN-GENERIERUNG (Zentral für alle Tabs) ---
+jahre_liste = list(range(p['aktuelles_jahr'], p['geburtsjahr'] + 96))
+df_timeline = generate_trend_data(jahre_liste, p)
 
 # --- HAUPTBEREICH (TABS) ---
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Sankey-Analyse", "📈 Zeitliche Entwicklung", "💰 Vermögensentwicklung", "⚖️ Strategie-Check"])
@@ -53,17 +58,18 @@ with tab1:
     if d_sq > 0: add_sq("Haushalts-Budget", "Liquiditäts-Überschuss", d_sq)
     elif d_sq < 0: add_sq("Liquiditäts-Unterdeckung", "Haushalts-Budget", abs(d_sq))
     for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
-    st.plotly_chart(create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", p['show_values']), use_container_width=True)
+    st.plotly_chart(create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", p['show_values']), width='stretch')
 
     # 2. Simulations-Analyse
-    res = calculate_financials_for_year(p['betrachtungsjahr'], p)
-    st.divider()
+    st.subheader(f"2. Simulation (Jahr {p['betrachtungsjahr']})")
+    # K2 Fix: Wir nehmen die Zeile aus dem zentralen DataFrame für dieses Jahr
+    res = df_timeline[df_timeline["Jahr"] == p['betrachtungsjahr']].iloc[0].to_dict()
     
     # KENNZAHLEN DASHBOARD
-    st.subheader(f"2. Simulation: {res['Phase']} ({p['betrachtungsjahr']})")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Brutto", f"{res['Brutto']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    col2.metric("Netto", f"{res['Netto-Einkommen']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
+    col2.metric("Netto", f"{res['Netto-Einkommen']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."), 
+                help="Das Netto wird auf Basis des zu versteuernden Einkommens (zvE) berechnet. Dabei werden Vorsorgeaufwendungen (SV-Beiträge) und Pauschbeträge (Werbungskosten 1.230€) automatisch abgezogen. Individuelle Freibeträge sind nicht berücksichtigt.")
     col3.metric("Steuerlast", f"{res['Steuersatz']:.1f} %")
     
     ueberschuss = res['Überschuss/Defizit']
@@ -81,19 +87,18 @@ with tab1:
             v_r.append(v)
 
     # Brutto-Aufschlüsselung
-    if res['Phase'] == "Aktiv":
-        add_r("Arbeitseinkommen", "Brutto", p['aktuelles_brutto'])
-    elif res['Phase'] in ["ATZ(A)", "ATZ(P)"]: # K3 Fix: ATZ richtig abfragen
-        h_br = p['aktuelles_brutto'] / 2
-        auf = h_br * (p['atz_aufstockung_pct'] / 100)
-        add_r("ATZ-Gehalt", "Brutto", h_br)
-        add_r("AG-Aufstockung", "Brutto", auf)
-    else: # Rente
-        # Einnahmen dynamisiert aus res holen
-        for e in p['einnahmen']:
-            if p['betrachtungsjahr'] >= e["start"] and p['betrachtungsjahr'] <= e["ende"]:
-                val = res.get(e["name"], e["betrag"]) # Dynamisierten Wert falls vorhanden
+    for e in p['einnahmen']:
+        if res['Jahr'] >= e.get("start", 0) and res['Jahr'] <= e.get("ende", 9999):
+            val = res.get(e["name"], 0.0)
+            if val > 0:
                 add_r(e["name"], "Brutto", val)
+    
+    # Falls wir in der Aktivphase sind und kein Gehalt in den Einnahmen steht (sondern über p['aktuelles_brutto'])
+    if res['Phase'] == "Aktiv" and "Gehalt" in res:
+         add_r("Arbeitseinkommen", "Brutto", res["Gehalt"])
+    elif res['Phase'] in ["ATZ(A)", "ATZ(P)"]:
+         if "Gehalt (ATZ)" in res: add_r("ATZ-Gehalt", "Brutto", res["Gehalt (ATZ)"])
+         if "Aufstockung" in res: add_r("AG-Aufstockung", "Brutto", res["Aufstockung"])
 
     # Abzüge aufschlüsseln
     if res.get('Beitragsverlust', 0) > 0:
@@ -107,44 +112,26 @@ with tab1:
     if res['KiSt'] > 0:
         add_r("Brutto", "Kirchensteuer", res['KiSt'])
     
-    # Kapitalerträge haben separate Abgeltungsteuer (in Steuern gesamt enthalten, aber hier als EkSt vereinfacht abgebildet)
-    # Wenn wir es präzise machen wollen, könnten wir "Abgeltungsteuer" hinzufügen, aber die Engine berechnet es schon ein.
-    # Da steuer_ekst in Engine.py um steuer_kapital erhöht wurde, ist es in Einkommensteuer enthalten.
+    add_r("Brutto", "Netto-Einkommen", res['Netto-Einkommen'])
+    add_r("Netto-Einkommen", "Verfügbares Budget", res['Netto-Einkommen'])
     
-    add_r("Brutto", "Sozialabgaben", res['Sozialabgaben'])
-    add_r("Brutto", "Verfügbares Budget", res['Netto-Einkommen'])
-
-    # Ausgaben und Überschuss
     if res['Überschuss/Defizit'] > 0:
         add_r("Verfügbares Budget", "Liquiditäts-Überschuss", res['Überschuss/Defizit'])
     elif res['Überschuss/Defizit'] < 0:
         add_r("Liquiditäts-Unterdeckung", "Verfügbares Budget", abs(res['Überschuss/Defizit']))
 
-    # Einzelne Ausgaben (aus res['Bedarf'] berechnet in Engine, wir müssen sie hier analog inflationieren)
+    # Einzelne Ausgaben (aus res['EXP_...'] direkt aus der Engine)
     for k in p['ausgaben_kategorien']:
-        # Der genaue Betrag pro Kategorie wurde in engine.py berechnet, wir replizieren ihn hier für's Sankey
-        basis_ausgabe = p['ausgaben_input'][k]
-        jahr = p['betrachtungsjahr']
-        jahre = jahr - p['aktuelles_jahr']
-        if jahre > 0 and p['inflation_rate'] > 0:
-            inflationierte_ausgabe = basis_ausgabe * (1 + p['inflation_rate'] / 100) ** jahre
-        else:
-            inflationierte_ausgabe = basis_ausgabe
-            
-        if res['Phase'] == "Rente":
-            inflationierte_ausgabe *= (p['anpassungsfaktor_input'][k] / 100)
-            
-        add_r("Verfügbares Budget", k, inflationierte_ausgabe)
+        val = res.get(f"EXP_{k}", 0.0)
+        if val > 0:
+            add_r("Verfügbares Budget", k, val)
         
-    st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {p['betrachtungsjahr']}", p['show_values']), use_container_width=True)
+    st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {p['betrachtungsjahr']}", p['show_values']), width='stretch')
 
 # --- TAB 2: TREND ---
 with tab2:
     st.subheader("Finanzielle Entwicklung bis Alter 95")
     show_tax_rate = st.checkbox("Effektiven Steuersatz anzeigen (%)", value=False)
-    
-    jahre = list(range(p['aktuelles_jahr'], p['geburtsjahr'] + 96))
-    df_trend = generate_trend_data(jahre, p)
     
     # Meilensteine vorbereiten
     meilensteine = []
@@ -158,23 +145,17 @@ with tab2:
         if e["start"] > p['aktuelles_jahr'] and e["start"] != p['rentenbeginn']:
             meilensteine.append({"jahr": e["start"], "label": f"Start: {e['name']}", "color": "#8E44AD"})
 
-    st.plotly_chart(create_trend_chart(df_trend, meilensteine, show_tax_rate=show_tax_rate), use_container_width=True)
+    st.plotly_chart(create_trend_chart(df_timeline, meilensteine, show_tax_rate=show_tax_rate), width='stretch')
     
     with st.expander("Datentabelle anzeigen"):
-        st.dataframe(df_trend.style.format("{:.2f}€", subset=["Brutto", "Steuern", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"]).format("{:.1f}%", subset=["Steuersatz"]), use_container_width=True)
+        st.dataframe(df_timeline.style.format("{:.2f}€", subset=["Brutto", "Steuern", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"]).format("{:.1f}%", subset=["Steuersatz"]), width='stretch')
 
 # --- TAB 3: VERMÖGEN ---
 with tab3:
     st.subheader("Kumulative Vermögensentwicklung")
     st.info(f"Startvermögen: **{p['startvermoegen']:,.2f} €** | Angenommene Kapitalrendite: **{p['kapitalrendite']:.1f} % p.a.**".replace(",", "X").replace(".", ",").replace("X", "."))
     
-    # df_trend haben wir schon im tab2 generiert, aber falls tab2 nicht gerendert wurde, 
-    # generieren wir es sicherheitshalber nochmal wenn es nicht existiert
-    if 'df_trend' not in locals():
-        jahre = list(range(p['aktuelles_jahr'], p['geburtsjahr'] + 96))
-        df_trend = generate_trend_data(jahre, p)
-        
-    st.plotly_chart(create_wealth_chart(df_trend, p['startvermoegen'], p['kapitalrendite']), use_container_width=True)
+    st.plotly_chart(create_wealth_chart(df_timeline, p['startvermoegen'], p['kapitalrendite']), width='stretch')
 
 # --- TAB 4: STRATEGIE ---
 with tab4:
@@ -197,7 +178,7 @@ with tab4:
         else:
             st.warning("Kein Break-Even-Punkt innerhalb der Simulation (bis Alter 100) gefunden. Ein früherer Eintritt scheint in diesem Szenario langfristig vorteilhafter oder der Unterschied ist zu gering.")
 
-        st.plotly_chart(create_break_even_chart(df_be, be_alter), use_container_width=True)
+        st.plotly_chart(create_break_even_chart(df_be, be_alter), width='stretch')
     except Exception as e:
         st.error(f"Fehler bei der Strategie-Berechnung: {e}")
         st.info("Dies kann an fehlenden Daten in einer importierten Datei liegen. Bitte prüfe deine Eingaben in der Sidebar.")

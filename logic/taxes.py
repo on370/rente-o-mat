@@ -40,6 +40,26 @@ TARIF_PARAMETER = {
     },
 }
 
+# --- Steuerliche Pauschbeträge ---
+WERBUNGSKOSTEN_PAUSCHBETRAG_AKTIV = 1230.0  # § 9a Satz 1 Nr. 1 Buchst. a EStG
+WERBUNGSKOSTEN_PAUSCHBETRAG_RENTE = 102.0   # § 9a Satz 1 Nr. 1 Buchst. b EStG
+SONDERAUSGABEN_PAUSCHBETRAG = 36.0          # § 10c EStG
+
+
+def ermittle_zve_naherung(brutto_jahr, jahr, phase="Aktiv", vorsorgeaufwendungen_jahr=0.0):
+    """
+    Ermittelt eine Näherung des zu versteuernden Einkommens (zvE).
+    Zieht Werbungskosten, Sonderausgaben und Vorsorgeaufwendungen vom Brutto ab.
+    """
+    if phase == "Aktiv":
+        wk = WERBUNGSKOSTEN_PAUSCHBETRAG_AKTIV
+    else:
+        wk = WERBUNGSKOSTEN_PAUSCHBETRAG_RENTE
+        
+    zve = brutto_jahr - wk - SONDERAUSGABEN_PAUSCHBETRAG - vorsorgeaufwendungen_jahr
+    return max(0, zve)
+
+
 def _get_tarif(jahr):
     """Gibt die Tarifparameter für ein Jahr zurück. Für unbekannte Jahre wird der letzte bekannte Tarif verwendet."""
     if jahr in TARIF_PARAMETER:

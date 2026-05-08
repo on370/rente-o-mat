@@ -15,22 +15,21 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
         v = max(in_s, out_s)
         display_labels.append(f"{label} ({v:.0f}€)" if show_vals else label)
         
-        # Dynamische Farben für Ergebnis-Knoten und Steuern
-        if "Überschuss" in label:
+        low_label = label.lower()
+        if "überschuss" in low_label:
             node_colors.append("#28B463") # Grün
-        elif "Unterdeckung" in label or "Abschlag" in label or "Beitragsverlust" in label or "Rentenabschlag" in label:
+        elif "unterdeckung" in low_label or "abschlag" in low_label or "beitragsverlust" in low_label:
             node_colors.append("#CB4335") # Kräftiges Rot
-        elif "Steuern" in label or "Soli" in label or "KiSt" in label or "Abgeltungsteuer" in label:
-            node_colors.append("#E74C3C") # Etwas helleres Rot für Steuern
-        elif "Sozialabgaben" in label:
-            node_colors.append("#F39C12") # Orange für SV
+        elif "steuer" in low_label or "soli" in low_label or "kist" in low_label or "abgaben" in low_label:
+            node_colors.append("#E74C3C") # Etwas helleres Rot für Steuern/Abgaben
         else:
             node_colors.append("#2E86C1") # Standard Blau
 
     link_colors = []
     for t in targets:
-        if "Abschlag" in labels[t] or "Beitragsverlust" in labels[t] or "Rentenabschlag" in labels[t]:
-            link_colors.append("rgba(203, 67, 53, 0.6)") # Leicht transparentes Rot
+        low_t = labels[t].lower()
+        if "abschlag" in low_t or "beitragsverlust" in low_t or "abgaben" in low_t or "steuer" in low_t or "soli" in low_t:
+            link_colors.append("rgba(203, 67, 53, 0.4)") # Leicht transparentes Rot
         else:
             link_colors.append("#E5E7E9")
 

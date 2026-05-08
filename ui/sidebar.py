@@ -349,39 +349,6 @@ def render_sidebar():
             startvermoegen = st.number_input("Startvermögen (€)", value=st.session_state.get("startvermoegen_key", 0.0), key="startvermoegen_key")
             rendite = st.slider("Kapitalrendite p.a. (%)", 0.0, 10.0, st.session_state.get("rendite_key", 3.0), 0.1, key="rendite_key")
 
-        # --- 8. ZEITSTRAHL-SIMULATION ---
-        if "betrachtungsjahr" not in st.session_state:
-            st.session_state.betrachtungsjahr = aktuelles_jahr
-
-        with st.expander("🕒 Zeitstrahl-Navigation", expanded=True):
-            curr_year = st.session_state.betrachtungsjahr
-            atz_mitte = atz_start + (atz_dauer / 2) if atz_simulieren else 0
-            
-            if atz_simulieren and atz_start <= curr_year < rentenbeginn:
-                phase_label = "ATZ(A)" if curr_year < atz_mitte else "ATZ(P)"
-                st.warning(f"Phase: {phase_label}")
-            elif curr_year < rentenbeginn:
-                phase_label = "Aktiv"
-                st.info(f"Phase: {phase_label}")
-            else:
-                phase_label = "Ruhestand"
-                st.success(f"Phase: {phase_label}")
-
-            def fmt_j(j): return f"{j:.1f}".replace(".0", "") if j % 1 != 0 else f"{int(j)}"
-            st.caption("Wichtige Meilensteine:")
-            if atz_simulieren:
-                m_cols = st.columns(3)
-                m_cols[0].caption(f"🔵 A: {fmt_j(atz_start)}")
-                m_cols[1].caption(f"🟡 P: {fmt_j(atz_mitte)}")
-                m_cols[2].caption(f"🟢 Rente: {fmt_j(rentenbeginn)}")
-            else:
-                m_cols = st.columns(2)
-                m_cols[0].caption(f"📍 Heute: {aktuelles_jahr}")
-                m_cols[1].caption(f"🟢 Rente: {fmt_j(rentenbeginn)}")
-
-            betrachtungsjahr = st.slider("Betrachtungsjahr ausblenden", aktuelles_jahr, geburtsjahr + 100, key="betrachtungsjahr", label_visibility="collapsed")
-            st.caption(f"Betrachtungsjahr: {betrachtungsjahr} (Alter: {betrachtungsjahr - geburtsjahr} Jahre)")
-
         return {
             "nutzer_name": nutzer_name, "geburtsjahr": geburtsjahr, "rentenbeginn": rentenbeginn,
             "atz_simulieren": atz_simulieren, "atz_dauer": atz_dauer if atz_simulieren else 0,
@@ -390,8 +357,8 @@ def render_sidebar():
             "ausgaben_input": ausgaben_input, "anpassungsfaktor_input": anpassungsfaktor_input,
             "einnahmen": st.session_state.einnahmen, "show_values": show_values,
             "ausgaben_kategorien": ausgaben_kategorien, "aktuelles_jahr": aktuelles_jahr,
-            "betrachtungsjahr": betrachtungsjahr, "kinderzahl": kinderzahl,
-            "kirchensteuer_satz": kirchensteuer_satz, "inflation_rate": infl_rate,
-            "rentenanpassung_rate": renten_anp, "bav_anpassung_rate": bav_anp,
-            "startvermoegen": startvermoegen, "kapitalrendite": rendite
+            "kinderzahl": kinderzahl, "kirchensteuer_satz": kirchensteuer_satz,
+            "inflation_rate": infl_rate, "rentenanpassung_rate": renten_anp,
+            "bav_anpassung_rate": bav_anp, "startvermoegen": startvermoegen,
+            "kapitalrendite": rendite
         }

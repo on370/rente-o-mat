@@ -40,93 +40,118 @@ tab1, tab2, tab3, tab4 = st.tabs(["📊 Sankey-Analyse", "📈 Zeitliche Entwick
 
 # --- TAB 1: SANKEY ---
 with tab1:
-    # 1. Status Quo Analyse
-    st.subheader("1. Status Quo (Aktivphase)")
-    sq_labels, sq_sources, sq_targets, sq_values = [], [], [], []
-    
-    def add_sq(s, t, v):
-        if v > 0.1:
-            if s not in sq_labels: sq_labels.append(s)
-            if t not in sq_labels: sq_labels.append(t)
-            sq_sources.append(sq_labels.index(s))
-            sq_targets.append(sq_labels.index(t))
-            sq_values.append(v)
-    
-    a_sq_sum = sum(p['ausgaben_input'].values())
-    d_sq = p['aktuelles_netto'] - a_sq_sum
-    add_sq("Aktuelles Netto", "Haushalts-Budget", p['aktuelles_netto'])
-    if d_sq > 0: add_sq("Haushalts-Budget", "Liquiditäts-Überschuss", d_sq)
-    elif d_sq < 0: add_sq("Liquiditäts-Unterdeckung", "Haushalts-Budget", abs(d_sq))
-    for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
-    st.plotly_chart(create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", p['show_values']), width='stretch')
-
-    # 2. Simulations-Analyse
-    st.subheader(f"2. Simulation (Jahr {p['betrachtungsjahr']})")
-    # K2 Fix: Wir nehmen die Zeile aus dem zentralen DataFrame für dieses Jahr
-    res = df_timeline[df_timeline["Jahr"] == p['betrachtungsjahr']].iloc[0].to_dict()
-    
-    # KENNZAHLEN DASHBOARD
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Brutto", f"{res['Brutto']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
-    col2.metric("Netto", f"{res['Netto-Einkommen']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."), 
-                help="Das Netto wird auf Basis des zu versteuernden Einkommens (zvE) berechnet. Dabei werden Vorsorgeaufwendungen (SV-Beiträge) und Pauschbeträge (Werbungskosten 1.230€) automatisch abgezogen. Individuelle Freibeträge sind nicht berücksichtigt.")
-    col3.metric("Steuerlast", f"{res['Steuersatz']:.1f} %")
-    
-    ueberschuss = res['Überschuss/Defizit']
-    ueberschuss_color = "normal" if ueberschuss >= 0 else "inverse"
-    col4.metric("Überschuss", f"{ueberschuss:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"{ueberschuss:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."), delta_color=ueberschuss_color)
-    
-    # SANKEY AUFBAU
-    l_r, s_r, t_r, v_r = [], [], [], []
-    def add_r(s, t, v):
-        if v > 0.1:
-            if s not in l_r: l_r.append(s)
-            if t not in l_r: l_r.append(t)
-            s_r.append(l_r.index(s))
-            t_r.append(l_r.index(t))
-            v_r.append(v)
-
-    # Brutto-Aufschlüsselung
-    for e in p['einnahmen']:
-        if res['Jahr'] >= e.get("start", 0) and res['Jahr'] <= e.get("ende", 9999):
-            val = res.get(e["name"], 0.0)
-            if val > 0:
-                add_r(e["name"], "Brutto", val)
-    
-    # Falls wir in der Aktivphase sind und kein Gehalt in den Einnahmen steht (sondern über p['aktuelles_brutto'])
-    if res['Phase'] == "Aktiv" and "Gehalt" in res:
-         add_r("Arbeitseinkommen", "Brutto", res["Gehalt"])
-    elif res['Phase'] in ["ATZ(A)", "ATZ(P)"]:
-         if "Gehalt (ATZ)" in res: add_r("ATZ-Gehalt", "Brutto", res["Gehalt (ATZ)"])
-         if "Aufstockung" in res: add_r("AG-Aufstockung", "Brutto", res["Aufstockung"])
-
-    # Abzüge aufschlüsseln
-    if res.get('Beitragsverlust', 0) > 0:
-        add_r("Brutto", "Beitragsverlust", res['Beitragsverlust'])
-    if res.get('Rentenabschlag', 0) > 0:
-        add_r("Brutto", "Rentenabschlag", res['Rentenabschlag'])
-    if res['EkSt'] > 0:
-        add_r("Brutto", "Einkommensteuer", res['EkSt'])
-    if res['Soli'] > 0:
-        add_r("Brutto", "Soli", res['Soli'])
-    if res['KiSt'] > 0:
-        add_r("Brutto", "Kirchensteuer", res['KiSt'])
-    
-    add_r("Brutto", "Netto-Einkommen", res['Netto-Einkommen'])
-    add_r("Netto-Einkommen", "Verfügbares Budget", res['Netto-Einkommen'])
-    
-    if res['Überschuss/Defizit'] > 0:
-        add_r("Verfügbares Budget", "Liquiditäts-Überschuss", res['Überschuss/Defizit'])
-    elif res['Überschuss/Defizit'] < 0:
-        add_r("Liquiditäts-Unterdeckung", "Verfügbares Budget", abs(res['Überschuss/Defizit']))
-
-    # Einzelne Ausgaben (aus res['EXP_...'] direkt aus der Engine)
-    for k in p['ausgaben_kategorien']:
-        val = res.get(f"EXP_{k}", 0.0)
-        if val > 0:
-            add_r("Verfügbares Budget", k, val)
+    # 1. STATUS QUO CONTAINER
+    with st.container(border=True):
+        st.subheader("📊 1. Status Quo (Aktivphase Heute)")
+        sq_labels, sq_sources, sq_targets, sq_values = [], [], [], []
         
-    st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {p['betrachtungsjahr']}", p['show_values']), width='stretch')
+        def add_sq(s, t, v):
+            if v > 0.1:
+                if s not in sq_labels: sq_labels.append(s)
+                if t not in sq_labels: sq_labels.append(t)
+                sq_sources.append(sq_labels.index(s))
+                sq_targets.append(sq_labels.index(t))
+                sq_values.append(v)
+        
+        a_sq_sum = sum(p['ausgaben_input'].values())
+        d_sq = p['aktuelles_netto'] - a_sq_sum
+        add_sq("Aktuelles Netto", "Haushalts-Budget", p['aktuelles_netto'])
+        if d_sq > 0: add_sq("Haushalts-Budget", "Liquiditäts-Überschuss", d_sq)
+        elif d_sq < 0: add_sq("Liquiditäts-Unterdeckung", "Haushalts-Budget", abs(d_sq))
+        for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
+        st.plotly_chart(create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", p['show_values']), width='stretch')
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 2. SIMULATIONS CONTAINER
+    with st.container(border=True):
+        st.subheader("🎯 2. Simulations-Analyse")
+        
+        # Zeitstrahl-Navigation direkt hier
+        if "betrachtungsjahr" not in st.session_state:
+            st.session_state.betrachtungsjahr = p['aktuelles_jahr']
+            
+        # Slider für das Jahr
+        b_jahr = st.slider("Simulation für Jahr:", p['aktuelles_jahr'], p['geburtsjahr'] + 95, st.session_state.betrachtungsjahr, key="b_jahr_slider")
+        st.session_state.betrachtungsjahr = b_jahr
+        
+        # Daten für das gewählte Jahr holen
+        res = df_timeline[df_timeline["Jahr"] == b_jahr].iloc[0].to_dict()
+        
+        # Phasen-Anzeige & Meilensteine
+        c1, c2 = st.columns([0.4, 0.6])
+        with c1:
+            phase_label = res['Phase']
+            if phase_label == "Aktiv": st.info(f"Phase: **Aktivphase**")
+            elif "ATZ" in phase_label: st.warning(f"Phase: **Altersteilzeit** ({phase_label})")
+            else: st.success(f"Phase: **Ruhestand**")
+        
+        with c2:
+            def fmt_j(j): return f"{j:.1f}".replace(".0", "") if j % 1 != 0 else f"{int(j)}"
+            m_text = f"📍 Heute: {p['aktuelles_jahr']} | 🟢 Rente: {fmt_j(p['rentenbeginn'])}"
+            if p['atz_simulieren']:
+                atz_mitte = p['atz_start'] + (p['atz_dauer'] / 2)
+                m_text = f"🔵 ATZ-A: {fmt_j(p['atz_start'])} | 🟡 ATZ-P: {fmt_j(atz_mitte)} | 🟢 Rente: {fmt_j(p['rentenbeginn'])}"
+            st.caption(m_text)
+        
+        st.divider()
+
+        # KENNZAHLEN DASHBOARD
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Brutto", f"{res['Brutto']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
+        col2.metric("Netto", f"{res['Netto-Einkommen']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."), 
+                    help="Das Netto wird auf Basis des zu versteuernden Einkommens (zvE) berechnet.")
+        col3.metric("Steuerlast", f"{res['Steuersatz']:.1f} %")
+        
+        ueberschuss = res['Überschuss/Defizit']
+        ueberschuss_color = "normal" if ueberschuss >= 0 else "inverse"
+        col4.metric("Überschuss", f"{ueberschuss:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."), delta=f"{ueberschuss:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."), delta_color=ueberschuss_color)
+        
+        # SANKEY AUFBAU
+        l_r, s_r, t_r, v_r = [], [], [], []
+        def add_r(s, t, v):
+            if v > 0.1:
+                if s not in l_r: l_r.append(s)
+                if t not in l_r: l_r.append(t)
+                s_r.append(l_r.index(s))
+                t_r.append(l_r.index(t))
+                v_r.append(v)
+
+        # Brutto-Aufschlüsselung
+        for e in p['einnahmen']:
+            if res['Jahr'] >= e.get("start", 0) and res['Jahr'] <= e.get("ende", 9999):
+                val = res.get(e["name"], 0.0)
+                if val > 0:
+                    add_r(e["name"], "Brutto", val)
+        
+        # Spezialfälle Aktiv/ATZ
+        if res['Phase'] == "Aktiv" and "Gehalt" in res:
+             add_r("Arbeitseinkommen", "Brutto", res["Gehalt"])
+        elif res['Phase'] in ["ATZ(A)", "ATZ(P)"]:
+             if "Gehalt (ATZ)" in res: add_r("ATZ-Gehalt", "Brutto", res["Gehalt (ATZ)"])
+             if "Aufstockung" in res: add_r("AG-Aufstockung", "Brutto", res["Aufstockung"])
+
+        # Abzüge
+        if res.get('Beitragsverlust', 0) > 0: add_r("Brutto", "Beitragsverlust", res['Beitragsverlust'])
+        if res.get('Rentenabschlag', 0) > 0: add_r("Brutto", "Rentenabschlag", res['Rentenabschlag'])
+        if res['EkSt'] > 0: add_r("Brutto", "Einkommensteuer", res['EkSt'])
+        if res['Soli'] > 0: add_r("Brutto", "Soli", res['Soli'])
+        if res['KiSt'] > 0: add_r("Brutto", "Kirchensteuer", res['KiSt'])
+        if res['Sozialabgaben'] > 0: add_r("Brutto", "Sozialabgaben", res['Sozialabgaben'])
+        
+        add_r("Brutto", "Netto-Einkommen", res['Netto-Einkommen'])
+        add_r("Netto-Einkommen", "Verfügbares Budget", res['Netto-Einkommen'])
+        
+        if res['Überschuss/Defizit'] > 0:
+            add_r("Verfügbares Budget", "Liquiditäts-Überschuss", res['Überschuss/Defizit'])
+        elif res['Überschuss/Defizit'] < 0:
+            add_r("Liquiditäts-Unterdeckung", "Verfügbares Budget", abs(res['Überschuss/Defizit']))
+
+        for k in p['ausgaben_kategorien']:
+            val = res.get(f"EXP_{k}", 0.0)
+            if val > 0: add_r("Verfügbares Budget", k, val)
+            
+        st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {b_jahr}", p['show_values']), width='stretch')
 
 # --- TAB 2: TREND ---
 with tab2:

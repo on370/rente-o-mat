@@ -82,10 +82,20 @@ def render_sidebar():
                 st.rerun()
 
         # --- 3. MEILENSTEINE ---
-        regel_jahre, _ = berechne_regelaltersgrenze(geburtsjahr)
-        default_rentenbeginn = geburtsjahr + regel_jahre
+        rag_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
+        default_jahr = geburtsjahr + rag_jahre
+        default_monat = rag_monate + 1 # +1 weil Monate 1-12
+        if default_monat > 12:
+            default_jahr += 1
+            default_monat -= 12
+            
         with st.expander("📅 Meilensteine", expanded=True):
-            rentenbeginn = st.number_input("Rentenbeginn (Jahr)", value=st.session_state.get("rentenbeginn_input", default_rentenbeginn), min_value=aktuelles_jahr, key="rentenbeginn_input", help="Das Jahr deines geplanten Renteneintritts. Jeder Monat vor der Regelaltersgrenze führt zu Abschlägen!")
+            col_j, col_m = st.columns([0.6, 0.4])
+            r_jahr = col_j.number_input("Rentenbeginn (Jahr)", value=st.session_state.get("rentenbeginn_jahr_input", default_jahr), min_value=aktuelles_jahr, key="rentenbeginn_jahr_input")
+            r_monat = col_m.selectbox("Monat", range(1, 13), index=st.session_state.get("rentenbeginn_monat_input", default_monat) - 1, key="rentenbeginn_monat_input")
+            
+            # Rentenbeginn als Dezimaljahr für die Engine
+            rentenbeginn = r_jahr + (r_monat - 1) / 12
             
             if "prev_rentenbeginn" not in st.session_state:
                 st.session_state.prev_rentenbeginn = rentenbeginn
@@ -114,13 +124,15 @@ def render_sidebar():
 
             # --- INFOBOX FÜR ABSCHLAG UND STEUER ---
             st.divider()
+            from logic.rentenrecht import format_regelaltersgrenze, berechne_monate_frueher
             monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn)
             abschlag_pct = min(14.4, monate_frueher * 0.3)
             
             from logic.taxes import berechne_rentensteuer_anteil
             steuer_anteil = berechne_rentensteuer_anteil(rentenbeginn)
             
-            regelaltersgrenze_str = format_regelaltersgrenze(geburtsjahr)
+            rag_str = format_regelaltersgrenze(geburtsjahr)
+            st.success(f"**Deine Regelaltersgrenze:** {rag_str}")
             
             # --- NEU: Präzise EP-Analyse für die Infobox ---
             from logic.rentenrecht import berechne_ep_pro_jahr, berechne_beitragsverlust_logic
@@ -135,6 +147,8 @@ def render_sidebar():
             
             # K2: Rentenwert projizieren für Infobox
             rw_proj = RENTENWERT_AKTUELL * (1 + rentenanpassung_rate / 100) ** jahre_bis_beginn
+            
+            monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn)
             bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr, rw_proj)
             
             # --- NEU: Break-Even Berechnung für Infobox ---
@@ -160,7 +174,7 @@ def render_sidebar():
                 be_info = "Berechnung läuft..."
 
             info_text = f"""
-            **Regelaltersgrenze:** {regelaltersgrenze_str}
+            **Regelaltersgrenze:** {rag_str}
             
             **Analyse vorzeitiger Eintritt:**
             * **Rentenabschlag (GRV):** {abschlag_pct:.1f} %
@@ -327,7 +341,6 @@ def render_sidebar():
             anp_label = st.selectbox("Gesetzliche Rente (Anpassung)", list(anp_options.keys()), index=default_idx, key="renten_anp_display", help="Jährliche Anpassung der GRV. Wird auch zur Projektion des Rentenwerts bis zum Start verwendet (DRV-Standard).")
             renten_anp = anp_options[anp_label]
             st.session_state["renten_anp_key"] = renten_anp # Für Export sichern
-            st.caption(f"Aktuelle Rate: {renten_anp}% p.a.")
             
             bav_anp = st.slider("Betriebsrente (bAV)", 0.0, 3.0, st.session_state.get("bav_anp_key", 1.0), 0.1, key="bav_anp_key", help="Jährliche garantierte Anpassung der bAV")
             

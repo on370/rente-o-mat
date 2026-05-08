@@ -18,7 +18,7 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
         # Dynamische Farben für Ergebnis-Knoten und Steuern
         if "Überschuss" in label:
             node_colors.append("#28B463") # Grün
-        elif "Unterdeckung" in label or "Abschlag" in label or "Beitragsverlust" in label:
+        elif "Unterdeckung" in label or "Abschlag" in label or "Beitragsverlust" in label or "Rentenabschlag" in label:
             node_colors.append("#CB4335") # Kräftiges Rot
         elif "Steuern" in label or "Soli" in label or "KiSt" in label or "Abgeltungsteuer" in label:
             node_colors.append("#E74C3C") # Etwas helleres Rot für Steuern
@@ -29,7 +29,7 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
 
     link_colors = []
     for t in targets:
-        if "Abschlag" in labels[t] or "Beitragsverlust" in labels[t]:
+        if "Abschlag" in labels[t] or "Beitragsverlust" in labels[t] or "Rentenabschlag" in labels[t]:
             link_colors.append("rgba(203, 67, 53, 0.6)") # Leicht transparentes Rot
         else:
             link_colors.append("#E5E7E9")
@@ -72,8 +72,8 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder"]
     income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_")]
     
-    # Professionelle Farbpalette für Einkommensquellen (Türkis/Blau-Töne)
-    color_sequence = ["#1ABC9C", "#2E86C1", "#17A589", "#2471A3", "#138D75", "#1F618D"]
+    # Professionelle Farbpalette für Einkommensquellen (Helleres Grün/Blau)
+    color_sequence = ["#2ECC71", "#3498DB", "#58D68D", "#2E86C1", "#A9DFBF", "#2471A3"]
     
     for i, col in enumerate(income_cols):
         fig.add_trace(
@@ -91,7 +91,7 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
                 x=df["Jahr"], y=df["Rentenabschlag"], name="Rentenabschlag (0,3%/Mon.)", 
                 marker=dict(
                     color="rgba(203, 67, 53, 0.1)", 
-                    line=dict(color="#CB4335", width=2),
+                    line=dict(color="#CB4335", width=0),
                     pattern=dict(shape="/", fgcolor="#CB4335", fillmode="overlay")
                 )
             ),
@@ -104,7 +104,7 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
                 x=df["Jahr"], y=df["Beitragsverlust"], name="Beitragsverlust (fehlende EP)", 
                 marker=dict(
                     color="rgba(203, 67, 53, 0.05)", 
-                    line=dict(color="#E74C3C", width=1),
+                    line=dict(color="#E74C3C", width=0),
                     pattern=dict(shape="x", fgcolor="#E74C3C", fillmode="overlay")
                 )
             ),
@@ -117,16 +117,16 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
         secondary_y=False
     )
 
-    # 3. Linie für Netto-Einkommen
+    # 3. Linie für Netto-Einkommen (Violett und punktiert für bessere Sichtbarkeit)
     fig.add_trace(
-        go.Scatter(x=df["Jahr"], y=df["Netto-Einkommen"], name="Netto-Einkommen", line=dict(color='#28B463', width=3, dash='dash')),
+        go.Scatter(x=df["Jahr"], y=df["Netto-Einkommen"], name="Netto-Einkommen", line=dict(color='#8E44AD', width=3, dash='dot')),
         secondary_y=False
     )
     
     # 4. Optionale Linie für Steuersatz
     if show_tax_rate:
         fig.add_trace(
-            go.Scatter(x=df["Jahr"], y=df["Steuersatz"], name="Steuersatz (%)", line=dict(color='#8E44AD', width=2, dash='dot')),
+            go.Scatter(x=df["Jahr"], y=df["Steuersatz"], name="Steuersatz (%)", line=dict(color='#7F8C8D', width=2, dash='dot')),
             secondary_y=True
         )
     

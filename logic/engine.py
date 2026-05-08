@@ -285,18 +285,7 @@ def calculate_financials_for_year(jahr, params):
 
 
 def generate_trend_data(jahre, params):
-    rate = params.get('rentenanpassung_rate', 0.0)
-    print(f"\n[DEBUG] Engine: Generiere Trend-Daten...")
-    print(f"[DEBUG] Rentenanpassung: {rate}%")
-    
     data = [calculate_financials_for_year(j, params) for j in jahre]
-    
-    # Stichprobe für ein Rentenjahr (z.B. p['rentenbeginn'])
-    rb = params.get('rentenbeginn', 2030)
-    sample = next((d for d in data if d["Jahr"] == rb), None)
-    if sample:
-        print(f"[DEBUG] Jahr {rb}: Netto-Einkommen = {sample['Netto-Einkommen']:.2f}€")
-    
     return pd.DataFrame(data).fillna(0)
 
 
@@ -306,8 +295,8 @@ def calculate_break_even_data(params):
     aktuelles_jahr = params.get("aktuelles_jahr", 2026)
     einnahmen = params.get("einnahmen", [])
     
-    regel_jahre, _ = berechne_regelaltersgrenze(geburtsjahr)
-    rag = geburtsjahr + regel_jahre
+    rag_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
+    rag = geburtsjahr + rag_jahre + (rag_monate / 12)
     
     params_a = params.copy()
     params_b = params.copy()

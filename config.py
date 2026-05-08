@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "003A" # Wir zählen Hexadezimal (0038 -> 0039 -> 003A)
+BUILD_ID = "003D" # Wir zählen Hexadezimal (0038 -> 0039 -> 003A -> 003B -> 003C -> 003D)
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

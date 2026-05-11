@@ -17,30 +17,64 @@ def render_sidebar():
     aktuelles_jahr = datetime.now().year
 
     # --- 0. INITIALISIERUNG ---
+    # Regelaltersgrenze als Basis für Defaults berechnen
+    regel_jahre, rag_monate = berechne_regelaltersgrenze(st.session_state.get("geburtsjahr_key", 1965))
+    def_beginn_jahr = st.session_state.get("geburtsjahr_key", 1965) + regel_jahre
+    def_beginn_monat = rag_monate + 1
+
+    defaults = {
+        "nutzer_name_key": "Max Mustermann",
+        "geburtsjahr_key": 1965,
+        "kinderzahl_key": 0,
+        "rentenbeginn_jahr_input": def_beginn_jahr,
+        "rentenbeginn_monat_input": def_beginn_monat,
+        "atz_sim_input": False,
+        "atz_dauer_input": 6,
+        "brutto_key": 6000.0,
+        "atz_aufst_key": 20,
+        "netto_key": 4500.0,
+        "show_vals_key": True,
+        "infl_rate_key": 2.0,
+        "renten_anp_key": 2.0,
+        "renten_anp_display_key": "2% (Standard)",
+        "bav_anp_key": 1.0,
+        "gehalts_dyn_key": 1.0,
+        "reinvest_target_key": "— Keine (nur Cash-Reserven) —",
+        "liq_reserve_key": 10000.0,
+        "liq_yield_key": 0.0,
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
     if "einnahmen" not in st.session_state:
-        # Standard-Werte für Erststart
-        regel_jahre, _ = berechne_regelaltersgrenze(1965)
-        def_beginn = 1965 + regel_jahre
         st.session_state.einnahmen = [
             {
                 "name": "Gesetzliche Rente",
                 "betrag": 2200.0,
                 "typ": "Gesetzlich",
-                "start": def_beginn,
-                "ende": 2065,
+                "start": def_beginn_jahr + (def_beginn_monat-1)/12,
+                "ende": def_beginn_jahr + 40,
             },
             {
                 "name": "Betriebsrente",
                 "betrag": 600.0,
                 "typ": "bAV",
-                "start": def_beginn,
-                "ende": 2065,
+                "start": def_beginn_jahr + (def_beginn_monat-1)/12,
+                "ende": def_beginn_jahr + 40,
             },
         ]
     if "assets" not in st.session_state:
         st.session_state.assets = []
     if "befristete_ausgaben" not in st.session_state:
         st.session_state.befristete_ausgaben = []
+
+    # Haushaltsbuch-Kategorien
+    for kat in ["Wohnen", "Mobilität", "Lebensmittel", "Versicherungen", "Gesundheit", "Freizeit", "Sonstiges"]:
+        if f"c_{kat}" not in st.session_state:
+            st.session_state[f"c_{kat}"] = 1200.0 if kat == "Wohnen" else 200.0
+        if f"a_{kat}" not in st.session_state:
+            st.session_state[f"a_{kat}"] = 100
 
     # --- 1. IMPORT-LOGIK (Muss vor dem Rendern der Widgets laufen) ---
     if st.session_state.get("do_import") and st.session_state.get("import_file"):
@@ -55,13 +89,11 @@ def render_sidebar():
         with st.expander("👤 Profil", expanded=True):
             nutzer_name = st.text_input(
                 "Name",
-                value=st.session_state.get("nutzer_name_key", "Max Mustermann"),
                 key="nutzer_name_key",
                 help="Wird für den Dateinamen beim Export verwendet.",
             )
             geburtsjahr = st.number_input(
                 "Geburtsjahr",
-                value=st.session_state.get("geburtsjahr_key", 1965),
                 min_value=1940,
                 max_value=2010,
                 key="geburtsjahr_key",
@@ -70,7 +102,6 @@ def render_sidebar():
 
             kinderzahl = st.number_input(
                 "Anzahl Kinder",
-                value=st.session_state.get("kinderzahl_key", 0),
                 min_value=0,
                 max_value=10,
                 key="kinderzahl_key",
@@ -176,15 +207,12 @@ def render_sidebar():
             col_j, col_m = st.columns([0.6, 0.4])
             r_jahr = col_j.number_input(
                 "Rentenbeginn (Jahr)",
-                value=st.session_state.get("rentenbeginn_jahr_input", default_jahr),
                 min_value=aktuelles_jahr,
                 key="rentenbeginn_jahr_input",
             )
             r_monat = col_m.selectbox(
                 "Monat",
                 range(1, 13),
-                index=st.session_state.get("rentenbeginn_monat_input", default_monat)
-                - 1,
                 key="rentenbeginn_monat_input",
             )
 
@@ -202,7 +230,6 @@ def render_sidebar():
 
             atz_simulieren = st.checkbox(
                 "ATZ einplanen",
-                value=st.session_state.get("atz_sim_input", False),
                 key="atz_sim_input",
                 help="Simuliert eine Altersteilzeit (Blockmodell) direkt vor dem Rentenbeginn.",
             )
@@ -213,7 +240,6 @@ def render_sidebar():
                         "ATZ Dauer (Jahre)",
                         1,
                         max_atz,
-                        int(min(6, max_atz)),
                         key="atz_dauer_input",
                     )
                 else:
@@ -334,7 +360,6 @@ def render_sidebar():
         with st.expander("💶 Finanzen Aktuell", expanded=False):
             aktuelles_brutto = st.number_input(
                 "Brutto/mtl.",
-                value=st.session_state.get("brutto_key", 6000.0),
                 key="brutto_key",
                 help="Dein aktuelles monatliches Bruttogehalt (als Basis für die Aktivphase).",
             )
@@ -342,7 +367,6 @@ def render_sidebar():
                 "ATZ-Aufst. % (vom halben Brutto)",
                 20,
                 50,
-                st.session_state.get("atz_aufst_key", 20),
                 key="atz_aufst_key",
                 help="Gesetzliches Minimum sind 20% (§3 AltTZG). Viele Tarifverträge (z.B. Metall/Chemie) liegen bei ca. 35-40%, um eine Netto-Quote von 85-90% zu erreichen. Die Aufstockung ist steuerfrei (Progressionsvorbehalt).",
             )
@@ -380,13 +404,11 @@ def render_sidebar():
 
             aktuelles_netto = st.number_input(
                 "Netto/mtl. (Optional)",
-                value=st.session_state.get("netto_key", 4500.0),
                 key="netto_key",
                 help="Dein echtes ausgezahltes Netto. Wird nur für das Status-Quo-Sankey ganz oben verwendet, um Abweichungen zu erkennen.",
             )
             show_values = st.checkbox(
                 "Werte im Sankey zeigen",
-                value=st.session_state.get("show_vals_key", True),
                 key="show_vals_key",
             )
 
@@ -761,9 +783,6 @@ def render_sidebar():
                 c1, c2 = st.columns([0.6, 0.4])
                 ausgaben_input[kat] = c1.number_input(
                     f"{kat}",
-                    value=st.session_state.get(
-                        f"c_{kat}", 1200.0 if kat == "Wohnen" else 200.0
-                    ),
                     min_value=0.0,
                     key=f"c_{kat}",
                 )
@@ -771,7 +790,6 @@ def render_sidebar():
                     f"RV%",
                     0,
                     200,
-                    st.session_state.get(f"a_{kat}", 100),
                     key=f"a_{kat}",
                     label_visibility="collapsed",
                 )
@@ -911,8 +929,7 @@ def render_sidebar():
                 "Ausgaben (Inflation)",
                 0.0,
                 5.0,
-                st.session_state.get("infl_rate_key", 2.0),
-                0.1,
+                step=0.1,
                 key="infl_rate_key",
                 help="Jährliche Steigerung aller Ausgaben",
             )
@@ -920,8 +937,7 @@ def render_sidebar():
                 "Gehalt (Dynamik)",
                 0.0,
                 5.0,
-                st.session_state.get("gehalts_dyn_key", 1.0),
-                0.1,
+                step=0.1,
                 key="gehalts_dyn_key",
                 help="Jährliche reale Steigerung des Bruttogehalts während der Aktivphase",
             )
@@ -931,19 +947,10 @@ def render_sidebar():
                 "1% (Moderat)": 1.0,
                 "2% (Standard)": 2.0,
             }
-            default_idx = 2  # 2% ist Standard
-
-            stored_val = st.session_state.get("renten_anp_key", 2.0)
-            if stored_val == 0.0:
-                default_idx = 0
-            elif stored_val == 1.0:
-                default_idx = 1
-
             anp_label = st.selectbox(
                 "Gesetzliche Rente (Anpassung)",
                 list(anp_options.keys()),
-                index=default_idx,
-                key="renten_anp_display",
+                key="renten_anp_display_key",
                 help="Jährliche Anpassung der GRV. Wird auch zur Projektion des Rentenwerts bis zum Start verwendet (DRV-Standard).",
             )
             renten_anp = anp_options[anp_label]
@@ -953,8 +960,7 @@ def render_sidebar():
                 "Betriebsrente (bAV)",
                 0.0,
                 3.0,
-                st.session_state.get("bav_anp_key", 1.0),
-                0.1,
+                step=0.1,
                 key="bav_anp_key",
                 help="Jährliche garantierte Anpassung der bAV",
             )
@@ -966,24 +972,15 @@ def render_sidebar():
             asset_names = [a["name"] for a in st.session_state.get("assets", [])]
             reinvest_options = ["— Keine (nur Cash-Reserven) —"] + asset_names
             
-            # Index finden für Reinvest-Target
-            saved_target = st.session_state.get("reinvest_target_key", reinvest_options[0])
-            try:
-                def_idx = reinvest_options.index(saved_target)
-            except ValueError:
-                def_idx = 0
-
             reinvest_target = st.selectbox(
                 "Ziel-Asset für Überschüsse",
                 reinvest_options,
-                index=def_idx,
                 key="reinvest_target_key",
                 help="Wähle ein Asset, in das jährliche Überschüsse automatisch reinvestiert werden sollen."
             )
             
             liq_reserve = st.number_input(
                 "Liquiditäts-Reserve (€)",
-                value=st.session_state.get("liq_reserve_key", 10000.0),
                 step=1000.0,
                 key="liq_reserve_key",
                 help="Betrag, der vorrangig in den Cash-Reserven gehalten wird (Notgroschen)."
@@ -992,8 +989,7 @@ def render_sidebar():
             liq_yield = st.slider(
                 "Zins Cash-Reserve (% p.a.)",
                 0.0, 3.0,
-                st.session_state.get("liq_yield_key", 0.0),
-                0.1,
+                step=0.1,
                 key="liq_yield_key",
                 help="Verzinsung für den Notgroschen (z.B. Tagesgeld)."
             )

@@ -301,7 +301,7 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
             if cfg.get("entnahme_aktiv") and jahr >= cfg.get("entnahme_start", 0) and jahr <= cfg.get("entnahme_ende", 9999):
                 # Unterscheidung: Fixer Betrag vs. Kapitalverzehr (Annuität)
                 if cfg.get("entnahme_modus") == "verzehr":
-                    rem_years = cfg.get("entnahme_ende", jahr) - jahr + 1
+                    rem_years = max(1, int(cfg.get("entnahme_ende", jahr) - jahr + 1))
                     if rem_years > 0:
                         r = cfg.get("rendite_pa", 0.0) / 100
                         if r > 0:
@@ -379,7 +379,10 @@ def generate_trend_data(jahre, params):
         res = calculate_financials_for_year(j, params, assets_state)
         
         # 2. Überschuss/Defizit des Jahres behandeln
-        jahres_saldo = res["Überschuss/Defizit"] * 12
+        # Korrektur: Wir reinvestieren nur den "echten" Überschuss, der NICHT aus Asset-Entnahmen stammt.
+        # Sonst entsteht ein Loop, wenn ein Asset mit Entnahmeplan gleichzeitig Reinvest-Ziel ist.
+        entnahmen_aus_assets = sum(v for k, v in res.items() if k.startswith("Entnahme: "))
+        jahres_saldo = (res["Überschuss/Defizit"] - entnahmen_aus_assets) * 12
         
         if jahres_saldo > 0:
             # Wohin mit dem Geld?
@@ -401,10 +404,13 @@ def generate_trend_data(jahre, params):
                 liquiditaet["kapital"] += jahres_saldo
         else:
             # Defizit: Erst aus Liquidität decken (kann negativ gehen)
-            liquiditaet["kapital"] += jahres_saldo 
+            # Hier nutzen wir den vollen Saldo (inkl. Entnahmen), da Entnahmen ja dazu da sind, Defizite zu decken.
+            liquiditaet["kapital"] += res["Überschuss/Defizit"] * 12 
         
-        # 3. Den aktualisierten Wert für die Visualisierung mitschreiben
-        res["ASSET_VAL_Cash-Reserven (kum.)"] = liquiditaet["kapital"]
+        # 3. Asset-Werte in 'res' aktualisieren, damit das Chart den Stand NACH Reinvestition zeigt
+        for a_s in assets_state:
+            res[f"ASSET_VAL_{a_s['name']}"] = a_s["kapital"]
+            
         data.append(res)
         
     return pd.DataFrame(data).fillna(0)

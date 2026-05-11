@@ -209,6 +209,19 @@ with tab3:
     st.subheader("Detaillierte Vermögensentwicklung (Stacked Area)")
     st.caption("Die Grafik zeigt die Entwicklung einzelner Assets sowie den kumulierten Cashflow (Liquidität).")
     st.plotly_chart(create_wealth_chart(df_timeline), width='stretch')
+    
+    with st.expander("Vermögensdaten anzeigen"):
+        # Finde alle Asset-Spalten
+        asset_cols = [c for c in df_timeline.columns if c.startswith("ASSET_VAL_")]
+        # Bereinige Spaltennamen für die Anzeige (Entferne Präfix)
+        df_display = df_timeline[["Jahr"] + asset_cols].copy()
+        df_display.columns = ["Jahr"] + [c.replace("ASSET_VAL_", "") for c in asset_cols]
+        
+        st.dataframe(
+            df_display.style.format("{:.0f}", subset=["Jahr"])
+            .format("{:,.2f} €", subset=[c.replace("ASSET_VAL_", "") for c in asset_cols]), 
+            width='stretch'
+        )
 
 # --- TAB 4: STRATEGIE ---
 with tab4:

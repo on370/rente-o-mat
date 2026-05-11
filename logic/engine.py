@@ -161,17 +161,24 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
     netto = 0.0
     grv_netto = 0.0
 
+    gehalts_dyn = params.get('gehalts_dynamik', 1.0) / 100
+    
     # --- 1. HAUPTEINNAHMEN (GEHALT ODER RENTE) ---
     if phase == "Aktiv" or "ATZ" in phase:
+        # Dynamisierung Gehalt (K6-Fix)
+        jahre_seit_start = max(0, jahr - params.get('aktuelles_jahr', 2026))
+        brutto_base = params.get('aktuelles_brutto', 0.0)
+        brutto_dyn = brutto_base * (1 + gehalts_dyn) ** jahre_seit_start
+
         if phase == "Aktiv":
-            brutto_st = params.get('aktuelles_brutto', 0.0)
+            brutto_st = brutto_dyn
             brutto_auszahlung = brutto_st
             income_details["Gehalt"] = brutto_st
             from logic.sozialversicherung import berechne_sv_aktiv
             sv_dict = berechne_sv_aktiv(brutto_st, jahr, kinderzahl)
             aufstockung = 0.0
         else: # ATZ
-            h_br = params.get('aktuelles_brutto', 0.0) / 2
+            h_br = brutto_dyn / 2
             aufstockung = h_br * (params.get('atz_aufstockung_pct', 20) / 100)
             brutto_st = h_br
             brutto_auszahlung = h_br + aufstockung
@@ -255,8 +262,19 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
             kapitalzuwachs_sonder += ez - m_ekst 
             
         netto = b_g - steuer_ekst - soli - kist - sv
-        grv_b = sum(v for n, v in income_details.items() if any(e['name'] == n and e['typ'] == 'Gesetzlich' for e in params.get('einnahmen', [])))
-        grv_netto = grv_b - sv_res["Details"].get("Gesetzlich", 0) - (grv_b * (steuer_ekst / b_g) if b_g > 0 else 0)
+        # Isolierte Netto-GRV für Strategie-Check (K5-Fix)
+        grv_brutto_mtl = income_details.get("Gesetzliche Rente", 0.0)
+        if grv_brutto_mtl > 0:
+            sv_grv = berechne_sv_rentner([{"name": "GRV", "betrag": grv_brutto_mtl, "typ": "Gesetzlich"}], jahr, kinderzahl)["Gesamt"]
+            st_b_grv = grv_brutto_mtl * (r_ant / 100)
+            zve_grv = ermittle_zve_naherung(st_b_grv * 12, jahr, phase="Rente", vorsorgeaufwendungen_jahr=sv_grv * 12)
+            steuer_grv_full = berechne_einkommensteuer(zve_grv, jahr)
+            steuer_grv = steuer_grv_full / 12
+            soli_grv = berechne_soli(steuer_grv_full) / 12
+            kist_grv = berechne_kirchensteuer(steuer_grv_full, kirchensteuer_satz) / 12
+            grv_netto = grv_brutto_mtl - sv_grv - steuer_grv - soli_grv - kist_grv
+        else:
+            grv_netto = 0.0
 
     # --- 2. ASSETS-SIMULATION ---
     asset_netto_einnahmen = 0.0
@@ -345,15 +363,14 @@ def generate_trend_data(jahre, params):
     for a in params.get("assets", []):
         assets_state.append({"name": a["name"], "kapital": a["startwert"], "config": a})
     
-    if params.get("startvermoegen", 0) > 0:
-        assets_state.append({
-            "name": "Globales Vermögen", "kapital": params["startvermoegen"],
-            "config": {"name": "Globales Vermögen", "rendite_pa": params.get("kapitalrendite", 3.0), "steuertyp": "abgeltung", "entnahme_aktiv": False}
-        })
-    
+    # Reinvest-Config
+    reinvest_target_name = params.get("reinvest_target", "— Keine (nur Cash-Reserven) —")
+    liq_limit = params.get("liquidity_reserve", 10000.0)
+    liq_yield = params.get("liquidity_yield", 0.0)
+
     # Virtuelles Asset für Cashflow-Überschüsse
     liquiditaet = {"name": "Cash-Reserven (kum.)", "kapital": 0.0, 
-                   "config": {"name": "Cash-Reserven (kum.)", "rendite_pa": 0.0, "steuertyp": "steuerfrei", "entnahme_aktiv": False}}
+                   "config": {"name": "Cash-Reserven (kum.)", "rendite_pa": liq_yield, "steuertyp": "steuerfrei", "entnahme_aktiv": False}}
     assets_state.append(liquiditaet)
 
     data = []
@@ -361,9 +378,30 @@ def generate_trend_data(jahre, params):
         # 1. Jahr berechnen
         res = calculate_financials_for_year(j, params, assets_state)
         
-        # 2. Überschuss/Defizit des Jahres in die Liquidität überführen
+        # 2. Überschuss/Defizit des Jahres behandeln
         jahres_saldo = res["Überschuss/Defizit"] * 12
-        liquiditaet["kapital"] += jahres_saldo
+        
+        if jahres_saldo > 0:
+            # Wohin mit dem Geld?
+            diff_to_limit = max(0, liq_limit - liquiditaet["kapital"])
+            if diff_to_limit > 0:
+                flow_to_liq = min(jahres_saldo, diff_to_limit)
+                liquiditaet["kapital"] += flow_to_liq
+                jahres_saldo -= flow_to_liq
+            
+            if jahres_saldo > 0 and reinvest_target_name != "— Keine (nur Cash-Reserven) —":
+                # In Ziel-Asset investieren
+                target_asset = next((a for a in assets_state if a["name"] == reinvest_target_name), None)
+                if target_asset:
+                    target_asset["kapital"] += jahres_saldo
+                    jahres_saldo = 0
+            
+            # Falls immer noch Rest (weil kein Target gewählt oder Asset nicht gefunden)
+            if jahres_saldo > 0:
+                liquiditaet["kapital"] += jahres_saldo
+        else:
+            # Defizit: Erst aus Liquidität decken (kann negativ gehen)
+            liquiditaet["kapital"] += jahres_saldo 
         
         # 3. Den aktualisierten Wert für die Visualisierung mitschreiben
         res["ASSET_VAL_Cash-Reserven (kum.)"] = liquiditaet["kapital"]

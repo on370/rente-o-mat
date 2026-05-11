@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "0056" # Sidebar Polishing (Asset Text & Export Help)
+BUILD_ID = "0060" # ATZ Date Formatting & Bugfixes
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

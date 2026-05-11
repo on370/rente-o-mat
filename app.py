@@ -1,3 +1,4 @@
+# Rente-O-Mat PRO - Build 0057 (Stable)
 import streamlit as st
 from ui.sidebar import render_sidebar
 from ui.charts import create_sankey, create_trend_chart, create_wealth_chart, create_break_even_chart

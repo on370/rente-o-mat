@@ -59,6 +59,22 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
     )
     return fig
 
+def _get_color_by_name(name, i=0):
+    """Interne Hilfsfunktion für semantische Farbgebung."""
+    # Professionelle qualitative Palette (D3)
+    palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+    
+    n = name.lower()
+    if "gesetzlich" in n or "grv" in n or "rente" == n: return "#1f77b4" # Blau
+    if "bav" in n or "betriebsrente" in n: return "#ff7f0e" # Orange
+    if "gehalt" in n or "einkommen" in n: return "#17becf" # Teal
+    if "aufstockung" in n: return "#e377c2" # Rosa/Magenta
+    if "privat" in n: return "#2ca02c" # Grün
+    if "kapital" in n or "entnahme" in n or "depot" in n or "etf" in n: return "#9467bd" # Violett
+    if "cash" in n or "reserve" in n or "liquidität" in n: return "#28B463" # Kräftiges Grün
+    
+    return palette[i % len(palette)]
+
 def create_trend_chart(df, meilensteine, show_tax_rate=False):
     """
     Erstellt ein gestapeltes Balkendiagramm für das Brutto-Einkommen (aufgeschlüsselt nach Quellen)
@@ -71,14 +87,11 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder", "Gesetzliche Rente (Potenzial)"]
     income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_") and not c.startswith("ASSET_VAL_")]
     
-    # Professionelle Farbpalette für Einkommensquellen (Helleres Grün/Blau)
-    color_sequence = ["#2ECC71", "#3498DB", "#58D68D", "#2E86C1", "#A9DFBF", "#2471A3"]
-    
     for i, col in enumerate(income_cols):
         fig.add_trace(
             go.Bar(
                 x=df["Jahr"], y=df[col], name=col, 
-                marker=dict(color=color_sequence[i % len(color_sequence)], line=dict(width=0))
+                marker=dict(color=_get_color_by_name(col, i), line=dict(width=0))
             ),
             secondary_y=False
         )
@@ -116,9 +129,9 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
         secondary_y=False
     )
 
-    # 3. Linie für Netto-Einkommen (Violett und punktiert für bessere Sichtbarkeit)
+    # 3. Linie für Netto-Einkommen (Dunkles Anthrazit für maximale Sichtbarkeit)
     fig.add_trace(
-        go.Scatter(x=df["Jahr"], y=df["Netto-Einkommen"], name="Netto-Einkommen", line=dict(color='#8E44AD', width=3, dash='dot')),
+        go.Scatter(x=df["Jahr"], y=df["Netto-Einkommen"], name="Netto-Einkommen", line=dict(color='#212F3D', width=3, dash='dot')),
         secondary_y=False
     )
     
@@ -165,14 +178,6 @@ def create_wealth_chart(df):
     # Finde alle Asset-Spalten
     asset_cols = [c for c in df.columns if c.startswith("ASSET_VAL_")]
     
-    # Professionelle Farbpalette für Assets (Blautöne und Grün für Cash-Reserven)
-    color_map = {
-        "Cash-Reserven (kum.)": "#28B463", # Grün für Cash-Reserven
-        "Globales Vermögen": "#2E86C1" # Standard Blau
-    }
-    # Weitere Farben für individuelle Assets
-    color_sequence = ["#5DADE2", "#AED6F1", "#1B4F72", "#2874A6", "#154360"]
-    
     # Sortierung: Cash-Reserven ganz oben im Stapel, damit negative Werte 
     # nicht die Basis der anderen Assets verschieben.
     if "ASSET_VAL_Cash-Reserven (kum.)" in asset_cols:
@@ -181,7 +186,7 @@ def create_wealth_chart(df):
 
     for i, col in enumerate(asset_cols):
         name = col.replace("ASSET_VAL_", "")
-        color = color_map.get(name, color_sequence[i % len(color_sequence)])
+        color = _get_color_by_name(name, i)
         
         fig.add_trace(
             go.Scatter(

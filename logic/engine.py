@@ -46,6 +46,7 @@ def _calculate_grv_components(jahr, e, params):
     """
     Zentrale Funktion zur Berechnung aller Komponenten einer gesetzlichen Rente.
     Berücksichtigt EP-Modus vs. Euro-Modus, Beitragsverlust und Abschläge.
+    K7-Fix: Berücksichtigt 80% EP-Aufstockung während der ATZ.
     """
     from logic.rentenrecht import berechne_monate_frueher, berechne_ep_pro_jahr, berechne_beitragsverlust_logic
     from config import RENTENWERT_AKTUELL
@@ -56,38 +57,49 @@ def _calculate_grv_components(jahr, e, params):
     rentenbeginn = params.get('rentenbeginn', geburtsjahr + 67)
     
     monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn)
-    ep_pro_jahr = berechne_ep_pro_jahr(params.get('aktuelles_brutto', 0), jahr)
+    brutto_voll = params.get('aktuelles_brutto', 0)
+    ep_pro_jahr_voll = berechne_ep_pro_jahr(brutto_voll, aktuelles_jahr)
     
     if e.get("eingabe_modus") == "punkte":
-        # Echte Hochrechnung: Startpunkte + (Jahre bis Beginn * EP_pro_Jahr)
-        jahre_bis_beginn = max(0, rentenbeginn - aktuelles_jahr)
-        ep_bei_beginn = e.get("punkte", 0.0) + (jahre_bis_beginn * ep_pro_jahr)
+        # K7: Detaillierte EP-Akkumulation bis Rentenbeginn
+        ep_bei_beginn = e.get("punkte", 0.0)
         
-        # K2: Rentenwert auf das Startjahr projizieren (wie DRV Renteninformation)
+        # Simuliere Jahre von heute bis Beginn
+        for j_sim in range(aktuelles_jahr, int(rentenbeginn)):
+            phase_sim = get_phase(j_sim + 0.5, params.get('atz_simulieren', False), params.get('atz_start', 9999), rentenbeginn)
+            if phase_sim == "Aktiv":
+                ep_bei_beginn += ep_pro_jahr_voll
+            elif "ATZ" in phase_sim:
+                # K7: In ATZ werden i.d.R. Beiträge auf Basis von 80% des Vollzeit-Bruttos gezahlt
+                ep_bei_beginn += ep_pro_jahr_voll * 0.8
+        
+        # Bruchstück für das letzte Jahr vor Rentenbeginn (falls nicht glatt 01.01.)
+        rest_jahr = rentenbeginn - int(rentenbeginn)
+        if rest_jahr > 0:
+            phase_sim = get_phase(rentenbeginn - 0.01, params.get('atz_simulieren', False), params.get('atz_start', 9999), rentenbeginn)
+            factor = 0.8 if "ATZ" in phase_sim else 1.0
+            ep_bei_beginn += ep_pro_jahr_voll * factor * rest_jahr
+
+        # K2: Rentenwert auf das Startjahr projizieren
+        jahre_bis_beginn = max(0, rentenbeginn - aktuelles_jahr)
         rentenwert_projiziert = RENTENWERT_AKTUELL * (1 + rentenanpassung_rate / 100) ** jahre_bis_beginn
         val_base = ep_bei_beginn * rentenwert_projiziert
         
         # Beitragsverlust (was man noch hätte sammeln können bis RAG)
-        bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr, rentenwert_projiziert)
+        bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr_voll, rentenwert_projiziert)
         bv_jahr = bv_res["euro"]
+        val_at_rag = val_base + bv_jahr
     else:
-        # Euro-Modus: Wir behandeln den Betrag als heutige Anwartschaft (wie DRV Info)
-        # und projizieren ihn bis zum Startjahr.
+        # Euro-Modus: Wie bisher (vereinfacht)
         jahre_bis_beginn = max(0, rentenbeginn - aktuelles_jahr)
         betrag_heute = e.get("betrag", 0.0)
-        
-        # K2: Auch Euro-Betrag projizieren (entspricht DRV Szenarien 1% / 2%)
         val_at_rag = betrag_heute * (1 + rentenanpassung_rate / 100) ** jahre_bis_beginn
-        
         rentenwert_projiziert = RENTENWERT_AKTUELL * (1 + rentenanpassung_rate / 100) ** jahre_bis_beginn
-        bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr, rentenwert_projiziert)
+        bv_res = berechne_beitragsverlust_logic(monate_frueher, ep_pro_jahr_voll, rentenwert_projiziert)
         bv_jahr = bv_res["euro"]
-        
-        # Basiswert reduzieren um Beitragsverlust (falls man früher geht)
         val_base = val_at_rag - bv_jahr
         
-    # Dynamisierung (Rentenwert-Steigerung)
-    # Wir dynamisieren ab dem Jahr des Rentenbeginns.
+    # Dynamisierung (Rentenwert-Steigerung ab Rentenbeginn)
     start_der_rente = e.get("start", rentenbeginn)
     val_dyn = _dynamisiere_betrag(val_base, start_der_rente, jahr, rentenanpassung_rate)
     bv_dyn = _dynamisiere_betrag(bv_jahr, start_der_rente, jahr, rentenanpassung_rate)
@@ -95,197 +107,268 @@ def _calculate_grv_components(jahr, e, params):
     # Gesetzlicher Abschlag (0,3% pro Monat)
     abs_pct = min(14.4, monate_frueher * 0.3)
     abs_euro = val_dyn * (abs_pct / 100)
+    pot_dyn = _dynamisiere_betrag(val_at_rag, start_der_rente, jahr, rentenanpassung_rate)
     
     return {
         "beitragsverlust": bv_dyn,
         "abschlag_betrag": abs_euro,
-        "auszahlung_brutto": val_dyn - abs_euro,
-        "basis_brutto": val_dyn # Brutto vor 0,3% Abschlag
+        "basis_brutto": val_dyn - abs_euro,
+        "potential": pot_dyn
     }
 
 
-def calculate_financials_for_year(jahr, params):
+def calculate_financials_for_year(jahr, params, assets_state=None):
     """
-    Berechnet alle finanziellen Werte für ein spezifisches Jahr.
-    params: Dictionary mit allen Nutzereingaben inkl. Inflations-/Dynamisierungsparameter.
+    Zentrale Berechnungspipeline für ein spezifisches Jahr.
+    1. Einnahmen (Aktiv, ATZ oder Rente)
+    2. Assets (Rendite, Steuern, Entnahmen)
+    3. Ausgaben (Basis, Dynamik, befristete Posten)
     """
-    phase = get_phase(jahr, params.get('atz_simulieren', False), params.get('atz_start', 9999), params.get('rentenbeginn', 2030))
+    from logic.taxes import (
+        berechne_einkommensteuer, berechne_progressionsvorbehalt,
+        berechne_rentensteuer_anteil, berechne_soli, berechne_kirchensteuer,
+        berechne_ertragsanteil, berechne_abgeltungsteuer, berechne_fuenftelregelung,
+        ermittle_zve_naherung
+    )
+    from logic.sozialversicherung import (
+        berechne_sv_aktiv, berechne_sv_atz, berechne_sv_rentner,
+        berechne_vorsorgeaufwendungen_steuerlich
+    )
 
-    # Parameter auslesen (mit Defaults für Rückwärtskompatibilität)
-    kinderzahl = params.get('kinderzahl', 0)
-    kirchensteuer_satz = params.get('kirchensteuer_satz', 0.0)
-    inflation_rate = params.get('inflation_rate', 0.0)
-    rentenanpassung_rate = params.get('rentenanpassung_rate', 0.0)
-    bav_anpassung_rate = params.get('bav_anpassung_rate', 0.0)
     aktuelles_jahr = params.get('aktuelles_jahr', 2026)
     geburtsjahr = params.get('geburtsjahr', 1965)
+    rentenbeginn = params.get('rentenbeginn', 2030)
+    kinderzahl = params.get('kinderzahl', 0)
+    kirchensteuer_satz = params.get('kirchensteuer_satz', 0.0)
+    inflation_rate = params.get('inflation_rate', 2.0)
+    rentenanpassung_rate = params.get('rentenanpassung_rate', 2.0)
+    bav_anpassung_rate = params.get('bav_anpassung_rate', 1.0)
+    
+    phase = get_phase(jahr, params.get('atz_simulieren', False), params.get('atz_start', 9999), rentenbeginn)
 
-    # Einkommens-Details für das Diagramm
+    # --- INITIALISIERUNG ---
+    b_g = 0.0  # Brutto gesamt (monatlich)
+    st_b = 0.0 # Steuer-Basis (monatlich)
     income_details = {}
-    brutto = 0.0
+    rentenabschlag_gesamt = 0.0
+    beitragsverlust_gesamt = 0.0
+    potential_gesamt = 0.0
+    kapitalzuwachs_sonder = 0.0
+    sv = 0.0
     steuer_ekst = 0.0
     soli = 0.0
     kist = 0.0
-    sv = 0.0
     netto = 0.0
-    steuer_kapital = 0.0
-    rentenabschlag_gesamt = 0.0
-    beitragsverlust_gesamt = 0.0
-    steuerpflichtiger_anteil_grv = 0.0
-    kapitalzuwachs_sonder = 0.0
+    grv_netto = 0.0
 
-    if phase == "Aktiv":
-        brutto = params.get('aktuelles_brutto', 0.0)
-        income_details["Gehalt"] = brutto
-        sv_result = berechne_sv_aktiv(brutto, jahr, kinderzahl)
-        sv = sv_result["Gesamt"]
+    # --- 1. HAUPTEINNAHMEN (GEHALT ODER RENTE) ---
+    if phase == "Aktiv" or "ATZ" in phase:
+        if phase == "Aktiv":
+            brutto_st = params.get('aktuelles_brutto', 0.0)
+            brutto_auszahlung = brutto_st
+            income_details["Gehalt"] = brutto_st
+            from logic.sozialversicherung import berechne_sv_aktiv
+            sv_dict = berechne_sv_aktiv(brutto_st, jahr, kinderzahl)
+            aufstockung = 0.0
+        else: # ATZ
+            h_br = params.get('aktuelles_brutto', 0.0) / 2
+            aufstockung = h_br * (params.get('atz_aufstockung_pct', 20) / 100)
+            brutto_st = h_br
+            brutto_auszahlung = h_br + aufstockung
+            income_details["Gehalt (ATZ)"] = h_br
+            income_details["Aufstockung"] = aufstockung
+            from logic.sozialversicherung import berechne_sv_atz
+            sv_dict = berechne_sv_atz(h_br, jahr, kinderzahl)
+
+        b_g, sv = brutto_auszahlung, sv_dict["Gesamt"]
+        va_jahr = berechne_vorsorgeaufwendungen_steuerlich(brutto_st, jahr, phase="Aktiv")
+        zve_jahr = ermittle_zve_naherung(brutto_st * 12, jahr, phase="Aktiv", vorsorgeaufwendungen_jahr=va_jahr)
         
-        # K1: Berechnung auf Basis des zu versteuernden Einkommens (zvE)
-        va_jahr = berechne_vorsorgeaufwendungen_steuerlich(brutto, jahr, phase="Aktiv")
-        zve_jahr = ermittle_zve_naherung(brutto * 12, jahr, phase="Aktiv", vorsorgeaufwendungen_jahr=va_jahr)
-        
-        steuer_ekst = berechne_einkommensteuer(zve_jahr, jahr) / 12
+        from logic.taxes import berechne_einkommensteuer, berechne_progressionsvorbehalt
+        if aufstockung > 0:
+            steuer_ekst = berechne_progressionsvorbehalt(zve_jahr, aufstockung * 12, jahr) / 12
+        else:
+            steuer_ekst = berechne_einkommensteuer(zve_jahr, jahr) / 12
+            
         soli = berechne_soli(steuer_ekst * 12) / 12
         kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
-        netto = brutto - steuer_ekst - soli - kist - sv
+        netto = b_g - steuer_ekst - soli - kist - sv
 
-    elif phase in ["ATZ(A)", "ATZ(P)"]:
-        h_br = params.get('aktuelles_brutto', 0.0) / 2
-        auf = h_br * (params.get('atz_aufstockung_pct', 20) / 100)
-        brutto = h_br + auf
-        income_details["Gehalt (ATZ)"] = h_br
-        income_details["Aufstockung"] = auf
-        sv_result = berechne_sv_atz(h_br, jahr, kinderzahl)
-        sv = sv_result["Gesamt"]
+    else: # Phase: Rente
+        from logic.taxes import berechne_rentensteuer_anteil, berechne_ertragsanteil, berechne_einkommensteuer, berechne_abgeltungsteuer, berechne_fuenftelregelung
+        from logic.sozialversicherung import berechne_sv_rentner
         
-        # K1: zvE-Basis für ATZ (Progressionsvorbehalt auf Basis des zvE)
-        va_jahr = berechne_vorsorgeaufwendungen_steuerlich(h_br, jahr, phase="Aktiv")
-        zve_jahr = ermittle_zve_naherung(h_br * 12, jahr, phase="Aktiv", vorsorgeaufwendungen_jahr=va_jahr)
-        
-        steuer_ekst = berechne_progressionsvorbehalt(zve_jahr, auf * 12, jahr) / 12
-        soli = berechne_soli(steuer_ekst * 12) / 12
-        kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
-        netto = brutto - steuer_ekst - soli - kist - sv
-
-    else:  # Rente
-        b_g = 0.0
-        st_b = 0.0
-        r_ant = berechne_rentensteuer_anteil(params.get('rentenbeginn', 2030))
-        alter_bei_rentenbeginn = params.get('rentenbeginn', 2030) - geburtsjahr
+        r_ant = berechne_rentensteuer_anteil(int(rentenbeginn))
+        alter_bei_rentenbeginn = int(rentenbeginn - geburtsjahr)
         ertragsanteil = berechne_ertragsanteil(alter_bei_rentenbeginn)
-        sv_einnahmen = []
+        sv_einnahmen, einmalzahlungen_bav = [], []
         kapitalertraege_jahressumme = 0.0
-        steuerpflichtiger_anteil_grv = r_ant
-        einmalzahlungen_bav = []
 
         for e in params.get('einnahmen', []):
             if jahr >= e.get("start", 0) and jahr <= e.get("ende", 9999):
                 if e["typ"] == "Gesetzlich":
                     grv = _calculate_grv_components(jahr, e, params)
                     val = grv["basis_brutto"]
-                    abschlag_betrag = grv["abschlag_betrag"]
-                    beitragsverlust_jahr = grv["beitragsverlust"]
-                    rentenabschlag_gesamt += abschlag_betrag
-                    beitragsverlust_gesamt += beitragsverlust_jahr
-                    income_details["Beitragsverlust"] = income_details.get("Beitragsverlust", 0) + beitragsverlust_jahr
+                    rentenabschlag_gesamt += grv["abschlag_betrag"]
+                    beitragsverlust_gesamt += grv["beitragsverlust"]
+                    potential_gesamt += grv["potential"]
+                    income_details["Beitragsverlust"] = income_details.get("Beitragsverlust", 0) + grv["beitragsverlust"]
                 elif e["typ"] == "bAV":
                     val = _dynamisiere_betrag(e.get("betrag", 0.0), e.get("start", jahr), jahr, bav_anpassung_rate)
-                    abschlag_betrag = 0.0
                 elif e["typ"] == "bAV (Einmalzahlung)":
                     if jahr >= e["start"] and jahr < e["start"] + 10:
                         sv_einnahmen.append({"name": e["name"] + " (SV)", "betrag": e["betrag"] / 120, "typ": "bAV"})
-                    if jahr == e["start"]:
-                        einmalzahlungen_bav.append(e["betrag"])
+                    if jahr == e["start"]: einmalzahlungen_bav.append(e["betrag"])
                     continue
                 elif e["typ"] == "Entnahmeplan (Vermögen)":
-                    income_details[e["name"]] = e.get("betrag", 0.0)
-                    b_g += e.get("betrag", 0.0)
+                    found = any(a_s["name"] == e["name"] for a_s in (assets_state or []))
+                    if not found:
+                        income_details[e["name"]] = e["betrag"]
+                        b_g += e["betrag"]
                     continue
                 else:
                     val = e.get("betrag", 0.0)
-                    abschlag_betrag = 0.0
 
-                val_nach_abschlag = val - abschlag_betrag
                 income_details[e["name"]] = val
                 b_g += val
-                sv_einnahmen.append({"name": e["name"], "betrag": val_nach_abschlag, "typ": e["typ"]})
+                sv_einnahmen.append({"name": e["name"], "betrag": val, "typ": e["typ"]})
 
-                if e["typ"] == "Gesetzlich":
-                    st_b += val_nach_abschlag * (r_ant / 100)
-                elif e["typ"] == "bAV":
-                    st_b += val_nach_abschlag
-                elif e["typ"] == "Privat":
-                    st_b += val_nach_abschlag * (ertragsanteil / 100)
-                elif e["typ"] == "Kapital":
-                    kapitalertraege_jahressumme += val_nach_abschlag * 12
-                else:
-                    st_b += val_nach_abschlag
+                # Steuer-Basis
+                if e["typ"] == "Gesetzlich": st_b += val * (r_ant / 100)
+                elif e["typ"] == "bAV": st_b += val
+                elif e["typ"] == "Privat": st_b += val * (ertragsanteil / 100)
+                elif e["typ"] == "Kapital": kapitalertraege_jahressumme += val * 12
+                else: st_b += val
 
-        brutto = b_g
-        sv_result = berechne_sv_rentner(sv_einnahmen, jahr, kinderzahl)
-        sv = sv_result["Gesamt"]
-        
-        # K1: zvE-Basis für Rente
-        va_jahr = sv * 12 # SV-Beiträge der Rentner sind voll abziehbar
-        zve_jahr = ermittle_zve_naherung(st_b * 12, jahr, phase="Rente", vorsorgeaufwendungen_jahr=va_jahr)
+        sv_res = berechne_sv_rentner(sv_einnahmen, jahr, kinderzahl)
+        sv = sv_res["Gesamt"]
+        zve_jahr = ermittle_zve_naherung(st_b * 12, jahr, phase="Rente", vorsorgeaufwendungen_jahr=sv * 12)
         
         steuer_ekst = berechne_einkommensteuer(zve_jahr, jahr) / 12
-        soli_ekst = berechne_soli(steuer_ekst * 12) / 12
-        kist_ekst = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
+        soli = berechne_soli(steuer_ekst * 12) / 12
+        kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
         steuer_kapital = berechne_abgeltungsteuer(kapitalertraege_jahressumme, kirchensteuer_satz) / 12
+        steuer_ekst += steuer_kapital
+        
         for ez in einmalzahlungen_bav:
-            mehr_ekst = berechne_fuenftelregelung(st_b * 12, ez, jahr)
-            mehr_soli = berechne_soli((steuer_ekst * 12) + mehr_ekst) - berechne_soli(steuer_ekst * 12)
-            mehr_kist = berechne_kirchensteuer((steuer_ekst * 12) + mehr_ekst, kirchensteuer_satz) - berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz)
-            kapitalzuwachs_sonder += ez - mehr_ekst - mehr_soli - mehr_kist
-        soli = soli_ekst
-        kist = kist_ekst
-        steuer_ekst = steuer_ekst + steuer_kapital
-        netto = brutto - steuer_ekst - soli - kist - sv - rentenabschlag_gesamt
+            m_ekst = berechne_fuenftelregelung(st_b * 12, ez, jahr)
+            kapitalzuwachs_sonder += ez - m_ekst 
+            
+        netto = b_g - steuer_ekst - soli - kist - sv
+        grv_b = sum(v for n, v in income_details.items() if any(e['name'] == n and e['typ'] == 'Gesetzlich' for e in params.get('einnahmen', [])))
+        grv_netto = grv_b - sv_res["Details"].get("Gesetzlich", 0) - (grv_b * (steuer_ekst / b_g) if b_g > 0 else 0)
 
-    steuer_gesamt = steuer_ekst + soli + kist
-    tax_rate = (steuer_gesamt / brutto * 100) if brutto > 0 else 0
+    # --- 2. ASSETS-SIMULATION ---
+    asset_netto_einnahmen = 0.0
+    asset_results = {}
+    if assets_state is not None:
+        from logic.taxes import berechne_abgeltungsteuer
+        sparer_pausch_frei = 1000.0
+        for a_s in assets_state:
+            cfg = a_s["config"]
+            gewinn = a_s["kapital"] * (cfg["rendite_pa"] / 100.0)
+            st = 0.0
+            if cfg["steuertyp"] == "abgeltung":
+                st_pfl = max(0.0, gewinn - sparer_pausch_frei)
+                sparer_pausch_frei = max(0.0, sparer_pausch_frei - gewinn)
+                st = berechne_abgeltungsteuer(st_pfl, kirchensteuer_satz, sparerpauschbetrag=0)
+            elif cfg["steuertyp"] == "teilfreistellung":
+                tfs = cfg.get("teilfreistellung_pct", 30.0)
+                br_gew = gewinn * (1 - tfs / 100.0)
+                st_pfl = max(0.0, br_gew - sparer_pausch_frei)
+                sparer_pausch_frei = max(0.0, sparer_pausch_frei - br_gew)
+                st = berechne_abgeltungsteuer(st_pfl, kirchensteuer_satz, sparerpauschbetrag=0)
+            
+            a_s["kapital"] += gewinn - st
+            if cfg.get("entnahme_aktiv") and jahr >= cfg.get("entnahme_start", 0) and jahr <= cfg.get("entnahme_ende", 9999):
+                # Unterscheidung: Fixer Betrag vs. Kapitalverzehr (Annuität)
+                if cfg.get("entnahme_modus") == "verzehr":
+                    rem_years = cfg.get("entnahme_ende", jahr) - jahr + 1
+                    if rem_years > 0:
+                        r = cfg.get("rendite_pa", 0.0) / 100
+                        if r > 0:
+                            # Annuitätenformel (nachschüssig, da Verzinsung bereits erfolgt)
+                            # Rate = K * (r / (1 - (1+r)^-n))
+                            jahres_e = a_s["kapital"] * (r / (1 - (1+r)**(-rem_years)))
+                        else:
+                            jahres_e = a_s["kapital"] / rem_years
+                        ent_mtl = jahres_e / 12
+                    else:
+                        ent_mtl = 0.0
+                else:
+                    ent_mtl = cfg.get("entnahme_betrag_mtl", 0.0)
 
-    # Netto-Rente isolieren für Strategie-Check
-    grv_netto = 0.0
-    if phase == "Rente":
-        payout_brutto = 0.0
-        for e in params.get('einnahmen', []):
-            if e.get("typ") == "Gesetzlich" and jahr >= e.get("start", 0) and jahr <= e.get("ende", 9999):
-                grv_comp = _calculate_grv_components(jahr, e, params)
-                payout_brutto += grv_comp["auszahlung_brutto"]
-        if payout_brutto > 0:
-            from logic.sozialversicherung import _get_sv_params, berechne_pv_satz
-            svp = _get_sv_params(jahr)
-            pvs = berechne_pv_satz(kinderzahl, svp)
-            kv_grv = payout_brutto * (svp["rate_kv_rentner"] + svp["rate_kv_rentner_zusatz"])
-            pv_grv = payout_brutto * pvs
-            grv_netto = payout_brutto - kv_grv - pv_grv - (payout_brutto * (tax_rate / 100))
+                eff_e_jahr = min(ent_mtl * 12, a_s["kapital"])
+                a_s["kapital"] -= eff_e_jahr
+                ent_actual_mtl = eff_e_jahr / 12
+                asset_netto_einnahmen += ent_actual_mtl
+                income_details[f"Entnahme: {cfg['name']}"] = ent_actual_mtl
+            
+            asset_results[f"ASSET_VAL_{cfg['name']}"] = a_s["kapital"]
 
+    netto += asset_netto_einnahmen
+
+    # --- 3. AUSGABEN ---
     ausgaben = 0.0
     ausgaben_details = {}
     for k in params.get('ausgaben_kategorien', []):
-        basis_ausgabe = params.get('ausgaben_input', {}).get(k, 0.0)
-        infl_ausgabe = _dynamisiere_betrag(basis_ausgabe, aktuelles_jahr, jahr, inflation_rate)
-        if phase == "Rente":
-            infl_ausgabe *= (params.get('anpassungsfaktor_input', {}).get(k, 100) / 100)
-        ausgaben += infl_ausgabe
-        ausgaben_details[f"EXP_{k}"] = infl_ausgabe
+        bas = params.get('ausgaben_input', {}).get(k, 0.0)
+        val = _dynamisiere_betrag(bas, aktuelles_jahr, jahr, inflation_rate)
+        if phase == "Rente": val *= (params.get('anpassungsfaktor_input', {}).get(k, 100) / 100)
+        ausgaben += val
+        ausgaben_details[f"EXP_{k}"] = val
 
+    for ba in params.get('befristete_ausgaben', []):
+        if jahr >= ba.get('start', 0) and jahr <= ba.get('ende', 9999):
+            b = ba['betrag_mtl']
+            if ba.get('inflationsgebunden', False): b = _dynamisiere_betrag(b, aktuelles_jahr, jahr, inflation_rate)
+            kat = ba.get('kategorie', ba['name'])
+            ausgaben_details[f"EXP_{kat}"] = ausgaben_details.get(f"EXP_{kat}", 0) + b
+            ausgaben += b
+
+    steuer_g = steuer_ekst + soli + kist
+    tax_rate = (steuer_g / b_g * 100) if b_g > 0 else 0
     res = {
-        "Jahr": jahr, "Phase": phase, "Brutto": brutto, "EkSt": steuer_ekst, "Soli": soli, "KiSt": kist,
-        "Steuern": steuer_gesamt, "Steuersatz": tax_rate, "Sozialabgaben": sv, "Netto-Einkommen": netto,
-        "Netto-GRV": grv_netto, "Bedarf": ausgaben, "Überschuss/Defizit": netto - ausgaben,
-        "Rentenabschlag": rentenabschlag_gesamt, "Beitragsverlust": beitragsverlust_gesamt,
-        "Steuerpflichtiger_Rentenanteil": steuerpflichtiger_anteil_grv, "Kapitalzuwachs_Sonder": kapitalzuwachs_sonder
+        "Jahr": jahr, "Phase": phase, "Brutto": b_g, "EkSt": steuer_ekst, "Soli": soli, "KiSt": kist,
+        "Steuern": steuer_g, "Steuersatz": tax_rate,
+        "Sozialabgaben": sv, "Netto-Einkommen": netto, "Netto-GRV": grv_netto, "Bedarf": ausgaben,
+        "Überschuss/Defizit": netto - ausgaben, "Rentenabschlag": rentenabschlag_gesamt,
+        "Beitragsverlust": beitragsverlust_gesamt, "Gesetzliche Rente (Potenzial)": potential_gesamt,
+        "Kapitalzuwachs_Sonder": kapitalzuwachs_sonder
     }
-    res.update(income_details)
-    res.update(ausgaben_details)
+    res.update(income_details); res.update(ausgaben_details); res.update(asset_results)
     return res
 
 
 def generate_trend_data(jahre, params):
-    data = [calculate_financials_for_year(j, params) for j in jahre]
+    assets_state = []
+    for a in params.get("assets", []):
+        assets_state.append({"name": a["name"], "kapital": a["startwert"], "config": a})
+    
+    if params.get("startvermoegen", 0) > 0:
+        assets_state.append({
+            "name": "Globales Vermögen", "kapital": params["startvermoegen"],
+            "config": {"name": "Globales Vermögen", "rendite_pa": params.get("kapitalrendite", 3.0), "steuertyp": "abgeltung", "entnahme_aktiv": False}
+        })
+    
+    # Virtuelles Asset für Cashflow-Überschüsse
+    liquiditaet = {"name": "Cash-Reserven (kum.)", "kapital": 0.0, 
+                   "config": {"name": "Cash-Reserven (kum.)", "rendite_pa": 0.0, "steuertyp": "steuerfrei", "entnahme_aktiv": False}}
+    assets_state.append(liquiditaet)
+
+    data = []
+    for j in jahre:
+        # 1. Jahr berechnen
+        res = calculate_financials_for_year(j, params, assets_state)
+        
+        # 2. Überschuss/Defizit des Jahres in die Liquidität überführen
+        jahres_saldo = res["Überschuss/Defizit"] * 12
+        liquiditaet["kapital"] += jahres_saldo
+        
+        # 3. Den aktualisierten Wert für die Visualisierung mitschreiben
+        res["ASSET_VAL_Cash-Reserven (kum.)"] = liquiditaet["kapital"]
+        data.append(res)
+        
     return pd.DataFrame(data).fillna(0)
 
 

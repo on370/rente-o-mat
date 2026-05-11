@@ -56,6 +56,12 @@ def import_settings(json_file):
                 for kat, val in data["anpassungsfaktor_input"].items():
                     st.session_state[f"a_{kat}"] = val
 
+            # 4. Befristete Ausgaben & Assets
+            if "befristete_ausgaben" in data:
+                st.session_state.befristete_ausgaben = data["befristete_ausgaben"]
+            if "assets" in data:
+                st.session_state.assets = data["assets"]
+
             return True
         except Exception as e:
             st.error(f"Fehler beim Import: {e}")

@@ -68,8 +68,8 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
     # 1. Gestapelte Balken für Einkommensquellen
-    exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder"]
-    income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_")]
+    exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder", "Gesetzliche Rente (Potenzial)"]
+    income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_") and not c.startswith("ASSET_VAL_")]
     
     # Professionelle Farbpalette für Einkommensquellen (Helleres Grün/Blau)
     color_sequence = ["#2ECC71", "#3498DB", "#58D68D", "#2E86C1", "#A9DFBF", "#2471A3"]
@@ -156,56 +156,56 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
         
     return fig
 
-def create_wealth_chart(df, startvermoegen=0.0, kapitalrendite=0.0):
+def create_wealth_chart(df):
     """
-    Erstellt eine kumulative Kurve für die Vermögensentwicklung.
-    Startet explizit beim Startvermögen am heutigen Tag.
+    Erstellt ein Stacked Area Chart für die Vermögensentwicklung einzelner Assets.
     """
-    jahre_raw = df["Jahr"].tolist()
-    ueberschuesse = df["Überschuss/Defizit"].tolist()
-    kapitalzuwaechse = df["Kapitalzuwachs_Sonder"].tolist() if "Kapitalzuwachs_Sonder" in df.columns else [0]*len(jahre_raw)
-    
-    # Wir fügen den echten Startpunkt (heute) hinzu
-    jahre = [jahre_raw[0]]
-    vermoegen = [startvermoegen]
-    akt_vermoegen = startvermoegen
-    
-    for i, (u, kz) in enumerate(zip(ueberschuesse, kapitalzuwaechse)):
-        # Rendite und Cashflow des Jahres berechnen
-        # Wir nehmen an, der Cashflow fließt über das Jahr verteilt ein (vereinfacht: am Ende)
-        akt_vermoegen = akt_vermoegen * (1 + kapitalrendite / 100)
-        akt_vermoegen += u * 12
-        akt_vermoegen += kz
-        
-        # Der berechnete Wert ist der Stand zum ENDE des Jahres i
-        # Das ist gleichzeitig der Stand zum BEGINN des nächsten Jahres
-        jahre.append(jahre_raw[i] + 1)
-        vermoegen.append(akt_vermoegen)
-        
     fig = go.Figure()
     
-    # Fläche unter der Kurve
-    fig.add_trace(
-        go.Scatter(
-            x=jahre, 
-            y=vermoegen, 
-            name="Vermögen",
-            fill='tozeroy',
-            line=dict(color='#2E86C1', width=3),
-            fillcolor='rgba(46, 134, 193, 0.2)'
+    # Finde alle Asset-Spalten
+    asset_cols = [c for c in df.columns if c.startswith("ASSET_VAL_")]
+    
+    # Professionelle Farbpalette für Assets (Blautöne und Grün für Cash-Reserven)
+    color_map = {
+        "Cash-Reserven (kum.)": "#28B463", # Grün für Cash-Reserven
+        "Globales Vermögen": "#2E86C1" # Standard Blau
+    }
+    # Weitere Farben für individuelle Assets
+    color_sequence = ["#5DADE2", "#AED6F1", "#1B4F72", "#2874A6", "#154360"]
+    
+    # Sortierung: Cash-Reserven ganz oben im Stapel, damit negative Werte 
+    # nicht die Basis der anderen Assets verschieben.
+    if "ASSET_VAL_Cash-Reserven (kum.)" in asset_cols:
+        asset_cols.remove("ASSET_VAL_Cash-Reserven (kum.)")
+        asset_cols.append("ASSET_VAL_Cash-Reserven (kum.)")
+
+    for i, col in enumerate(asset_cols):
+        name = col.replace("ASSET_VAL_", "")
+        color = color_map.get(name, color_sequence[i % len(color_sequence)])
+        
+        fig.add_trace(
+            go.Scatter(
+                x=df["Jahr"], 
+                y=df[col], 
+                name=name,
+                mode='lines',
+                stackgroup='one', # Macht es zum gestapelten Flächendiagramm
+                line=dict(width=0.5, color=color),
+                fillcolor=color
+            )
         )
-    )
     
     # Rote Null-Linie
     fig.add_hline(y=0, line_width=2, line_color="#CB4335", line_dash="dash")
     
     fig.update_layout(
-        title="Kumulative Vermögensentwicklung (inkl. Rendite & Cashflow)",
+        title="Detaillierte Vermögensentwicklung nach Assets",
         template="plotly_white",
         hovermode="x unified",
         margin=dict(t=50, b=20, l=20, r=20),
         yaxis_title="Vermögen in Euro",
-        xaxis_title="Jahr (Stand jeweils zum 01.01.)",
+        xaxis_title="Jahr",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         separators=",."
     )
     

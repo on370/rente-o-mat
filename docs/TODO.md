@@ -39,7 +39,12 @@
 ## ⏳ In Arbeit / Nächste Schritte (Phase 3 & 4)
 - [ ] **Behebung kritischer Audit-Befunde (Build 0038)**
     - [x] K1: Korrektur EkSt-Berechnung (zvE vs. Brutto)
-    - [ ] K2-K7: Weitere Berechnungsfehler (Rentenwert, RAG-Monate, etc.)
+    - [x] K2: Rentenwert-Projektion im EP-Modus
+    - [x] K3: Monatsgenaue Regelaltersgrenze (RAG)
+    - [x] K4: Sankey-Bilanzierung (Potential-Darstellung)
+    - [ ] K5: Netto-GRV Steuersatz (isoliert)
+    - [ ] K6: Gehaltsdynamisierung (Steigerungsrate)
+    - [ ] K7: ATZ-RV-Aufstockung (80%-Regel)
 - [ ] **Befristete Ausgaben (Kredite/Unterhalt)**
     - [ ] UI-Komponente zum Hinzufügen von Ausgaben mit Enddatum
     - [ ] Engine-Logik zur zeitlichen Begrenzung von Ausgaben

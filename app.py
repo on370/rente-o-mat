@@ -25,7 +25,7 @@ if not st.session_state.disclaimer_accepted:
             st.rerun()
     st.stop()
 
-st.title("🛡️ Rente-O-Mat: Der Renten-Planer")
+st.title("🛡️ Rente-O-Mat: Der Lebens-Finanz-Planer")
 st.caption(FULL_VERSION)
 
 # --- SIDEBAR & PARAMETER ---
@@ -117,23 +117,51 @@ with tab1:
                 t_r.append(l_r.index(t))
                 v_r.append(v)
 
-        # Brutto-Aufschlüsselung
+        # Brutto-Aufschlüsselung & Potenzial-Logik (K4 - robust)
+        pot = res.get('Gesetzliche Rente (Potenzial)', 0)
+        bv = res.get('Beitragsverlust', 0)
+        ra = res.get('Rentenabschlag', 0)
+        
         for e in p['einnahmen']:
             if res['Jahr'] >= e.get("start", 0) and res['Jahr'] <= e.get("ende", 9999):
                 val = res.get(e["name"], 0.0)
-                if val > 0:
+                if val > 0 and e["typ"] != "Gesetzlich":
                     add_r(e["name"], "Brutto", val)
         
-        # Spezialfälle Aktiv/ATZ
+        # NEU: Entnahmen aus Assets im Sankey anzeigen
+        for k, v in res.items():
+            if k.startswith("Entnahme: ") and v > 0:
+                add_r(k, "Brutto", v)
+        
+        # GRV: Aggregierter Potenzial-Flow
+        if pot > 0:
+            grv_names = [e["name"] for e in p['einnahmen'] if e['typ'] == 'Gesetzlich'
+                         and res['Jahr'] >= e.get('start', 0) and res['Jahr'] <= e.get('ende', 9999)
+                         and res.get(e['name'], 0) > 0]
+            label = grv_names[0] if grv_names else "Gesetzliche Rente"
+            
+            if bv > 0 or ra > 0:
+                # Abzüge vorhanden → über Potenzial-Knoten leiten
+                add_r(label, "GRV (Potenzial)", pot)
+                grv_auszahlung = pot - bv - ra
+                if grv_auszahlung > 0:
+                    add_r("GRV (Potenzial)", "Brutto", grv_auszahlung)
+                if bv > 0:
+                    add_r("GRV (Potenzial)", "Beitragsverlust", bv)
+                if ra > 0:
+                    add_r("GRV (Potenzial)", "Rentenabschlag", ra)
+            else:
+                # Keine Abzüge → direkt ins Brutto
+                add_r(label, "Brutto", pot)
+            
+        # Spezialfälle Aktiv/ATZ (direkt ins Brutto)
         if res['Phase'] == "Aktiv" and "Gehalt" in res:
              add_r("Arbeitseinkommen", "Brutto", res["Gehalt"])
         elif res['Phase'] in ["ATZ(A)", "ATZ(P)"]:
              if "Gehalt (ATZ)" in res: add_r("ATZ-Gehalt", "Brutto", res["Gehalt (ATZ)"])
              if "Aufstockung" in res: add_r("AG-Aufstockung", "Brutto", res["Aufstockung"])
 
-        # Abzüge
-        if res.get('Beitragsverlust', 0) > 0: add_r("Brutto", "Beitragsverlust", res['Beitragsverlust'])
-        if res.get('Rentenabschlag', 0) > 0: add_r("Brutto", "Rentenabschlag", res['Rentenabschlag'])
+        # Abzüge vom Brutto (jetzt korrekt balanciert)
         if res['EkSt'] > 0: add_r("Brutto", "Einkommensteuer", res['EkSt'])
         if res['Soli'] > 0: add_r("Brutto", "Soli", res['Soli'])
         if res['KiSt'] > 0: add_r("Brutto", "Kirchensteuer", res['KiSt'])
@@ -177,10 +205,9 @@ with tab2:
 
 # --- TAB 3: VERMÖGEN ---
 with tab3:
-    st.subheader("Kumulative Vermögensentwicklung")
-    st.info(f"Startvermögen: **{p['startvermoegen']:,.2f} €** | Angenommene Kapitalrendite: **{p['kapitalrendite']:.1f} % p.a.**".replace(",", "X").replace(".", ",").replace("X", "."))
-    
-    st.plotly_chart(create_wealth_chart(df_timeline, p['startvermoegen'], p['kapitalrendite']), width='stretch')
+    st.subheader("Detaillierte Vermögensentwicklung (Stacked Area)")
+    st.caption("Die Grafik zeigt die Entwicklung einzelner Assets sowie den kumulierten Cashflow (Liquidität).")
+    st.plotly_chart(create_wealth_chart(df_timeline), width='stretch')
 
 # --- TAB 4: STRATEGIE ---
 with tab4:

@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "0041" # Wir zählen Hexadezimal (0040 -> 0041)
+BUILD_ID = "0056" # Sidebar Polishing (Asset Text & Export Help)
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

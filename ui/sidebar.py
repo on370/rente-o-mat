@@ -18,6 +18,10 @@ def render_sidebar():
             {"name": "Gesetzliche Rente", "betrag": 2200.0, "typ": "Gesetzlich", "start": def_beginn, "ende": 2065},
             {"name": "Betriebsrente", "betrag": 600.0, "typ": "bAV", "start": def_beginn, "ende": 2065},
         ]
+    if "assets" not in st.session_state:
+        st.session_state.assets = []
+    if "befristete_ausgaben" not in st.session_state:
+        st.session_state.befristete_ausgaben = []
     
     # --- 1. IMPORT-LOGIK (Muss vor dem Rendern der Widgets laufen) ---
     if st.session_state.get("do_import") and st.session_state.get("import_file"):
@@ -62,17 +66,19 @@ def render_sidebar():
                 "rentenanpassung_rate": st.session_state.get("renten_anp_key", 2.0),
                 "bav_anpassung_rate": st.session_state.get("bav_anp_key", 1.0),
                 "startvermoegen": st.session_state.get("startvermoegen_key", 0.0),
-                "kapitalrendite": st.session_state.get("rendite_key", 3.0)
+                "kapitalrendite": st.session_state.get("rendite_key", 3.0),
+                "befristete_ausgaben": st.session_state.get("befristete_ausgaben", []),
+                "assets": st.session_state.get("assets", [])
             }
             json_str = export_settings(export_params)
             
+            st.markdown("💾 **Export / Import**", help=DATENSCHUTZ_INFO)
             st.download_button(
-                label="Exportieren", 
+                label="Einstellungen exportieren", 
                 data=json_str, 
                 file_name=f"R-O-M_{nutzer_name.replace(' ', '_')}.json", 
                 mime="application/json", 
-                width='stretch',
-                help=DATENSCHUTZ_INFO
+                width='stretch'
             )
             
             uploaded_file = st.file_uploader("Import", type=["json"], key="json_uploader_widget", help=DATENSCHUTZ_INFO)
@@ -108,9 +114,9 @@ def render_sidebar():
 
             atz_simulieren = st.checkbox("ATZ einplanen", value=st.session_state.get("atz_sim_input", False), key="atz_sim_input", help="Simuliert eine Altersteilzeit (Blockmodell) direkt vor dem Rentenbeginn.")
             if atz_simulieren:
-                max_atz = max(1, rentenbeginn - aktuelles_jahr)
+                max_atz = int(max(1, rentenbeginn - aktuelles_jahr))
                 if max_atz > 1:
-                    atz_dauer = st.slider("ATZ Dauer (Jahre)", 1, max_atz, min(6, max_atz), key="atz_dauer_input")
+                    atz_dauer = st.slider("ATZ Dauer (Jahre)", 1, max_atz, int(min(6, max_atz)), key="atz_dauer_input")
                 else:
                     atz_dauer = 1
                     st.write(f"ATZ Dauer: **{atz_dauer} Jahr** (begrenzt durch Rentenbeginn)")
@@ -315,6 +321,99 @@ def render_sidebar():
                     st.session_state.einnahmen.pop(i)
                     st.rerun()
 
+        # --- 5b. VERMÖGENSWERTE ---
+        if "assets" not in st.session_state:
+            st.session_state.assets = []
+        if "asset_edit_idx" not in st.session_state:
+            st.session_state.asset_edit_idx = None
+        if "asset_show_add" not in st.session_state:
+            st.session_state.asset_show_add = False
+
+        with st.expander("💎 Vermögenswerte", expanded=False):
+            st.caption("Individuelle Assets (Depot, Tagesgeld) mit optionalem Entnahmeplan")
+            
+            if not st.session_state.asset_show_add and st.session_state.asset_edit_idx is None:
+                if st.button("➕ Neues Asset"):
+                    st.session_state.asset_show_add = True
+                    st.rerun()
+            
+            if st.session_state.asset_show_add or st.session_state.asset_edit_idx is not None:
+                is_edit = st.session_state.asset_edit_idx is not None
+                curr = st.session_state.assets[st.session_state.asset_edit_idx] if is_edit else {
+                    "name": "Welt-ETF", "startwert": 10000.0, "rendite_pa": 5.0,
+                    "steuertyp": "abgeltung", "teilfreistellung_pct": 30.0,
+                    "entnahme_aktiv": False, "entnahme_betrag_mtl": 500.0,
+                    "entnahme_start": aktuelles_jahr, "entnahme_ende": aktuelles_jahr + 20
+                }
+                st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
+                a_name = st.text_input("Name", value=curr["name"], key="a_name")
+                a_start = st.number_input("Startwert (€)", value=float(curr["startwert"]), min_value=0.0, key="a_start")
+                a_rendite = st.slider("Rendite (% p.a.)", 0.0, 10.0, float(curr["rendite_pa"]), 0.1, key="a_rendite")
+                
+                a_steuertyp_options = {"Abgeltungsteuer": "abgeltung", "Teilfreistellung (ETF)": "teilfreistellung", "Steuerfrei": "steuerfrei"}
+                a_steuertyp_display = st.selectbox("Besteuerung", list(a_steuertyp_options.keys()), 
+                                                   index=list(a_steuertyp_options.values()).index(curr["steuertyp"]), key="a_steuer")
+                a_steuertyp = a_steuertyp_options[a_steuertyp_display]
+                
+                a_tfs = 0.0
+                if a_steuertyp == "teilfreistellung":
+                    a_tfs = st.number_input("Teilfreistellung (%)", value=float(curr.get("teilfreistellung_pct", 30.0)), min_value=0.0, max_value=100.0, key="a_tfs")
+
+                st.divider()
+                a_ent_aktiv = st.checkbox("Entnahmeplan aktivieren", value=curr.get("entnahme_aktiv", False), key="a_ent_aktiv")
+                if a_ent_aktiv:
+                    a_ent_mode = st.selectbox("Entnahme-Modus", ["Fester Betrag", "Kapitalverzehr (bis Ende)"], 
+                                             index=0 if curr.get("entnahme_modus") == "fix" else 1, key="a_ent_mode")
+                    a_ent_modus_val = "fix" if a_ent_mode == "Fester Betrag" else "verzehr"
+                    
+                    if a_ent_modus_val == "fix":
+                        a_ent_betrag = st.number_input("Entnahme (€/mtl. Netto)", value=float(curr.get("entnahme_betrag_mtl", 500.0)), min_value=0.0, key="a_ent_betrag")
+                    else:
+                        st.info("💡 Der Betrag wird automatisch berechnet, damit das Kapital am Ende auf 0€ sinkt.")
+                        a_ent_betrag = 0.0
+                    
+                    a_ent_c1, a_ent_c2 = st.columns(2)
+                    a_ent_start = a_ent_c1.number_input("Von Jahr", value=max(2000, int(curr.get("entnahme_start", aktuelles_jahr))), min_value=2000, key="a_ent_start")
+                    a_ent_ende = a_ent_c2.number_input("Bis Jahr (Ende)", value=max(a_ent_start, int(curr.get("entnahme_ende", a_ent_start + 10))), min_value=a_ent_start, key="a_ent_ende")
+                else:
+                    a_ent_betrag, a_ent_start, a_ent_ende, a_ent_modus_val = 0.0, aktuelles_jahr, aktuelles_jahr + 10, "fix"
+                
+                ac1, ac2 = st.columns(2)
+                if ac1.button("💾 Speichern", key="a_save"):
+                    new_asset = {
+                        "name": a_name, "startwert": a_start, "rendite_pa": a_rendite,
+                        "steuertyp": a_steuertyp, "teilfreistellung_pct": a_tfs,
+                        "entnahme_aktiv": a_ent_aktiv, "entnahme_betrag_mtl": a_ent_betrag,
+                        "entnahme_start": a_ent_start, "entnahme_ende": a_ent_ende,
+                        "entnahme_modus": a_ent_modus_val
+                    }
+                    if is_edit:
+                        st.session_state.assets[st.session_state.asset_edit_idx] = new_asset
+                    else:
+                        st.session_state.assets.append(new_asset)
+                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = None, False
+                    st.rerun()
+                if ac2.button("❌ Abbrechen", key="a_cancel"):
+                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = None, False
+                    st.rerun()
+            
+            for i, asset in enumerate(st.session_state.assets):
+                col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+                if asset.get('entnahme_aktiv'):
+                    if asset.get('entnahme_modus') == 'verzehr':
+                        ent_str = " | Entnahme: Berechnet"
+                    else:
+                        ent_str = f" | Entnahme: {asset['entnahme_betrag_mtl']:.0f}€"
+                else:
+                    ent_str = ""
+                col1.write(f"**{asset['name']}**\n{asset['startwert']:,.0f}€{ent_str}")
+                if col2.button("✏️", key=f"a_e_{i}"):
+                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = i, False
+                    st.rerun()
+                if col3.button("🗑️", key=f"a_d_{i}"):
+                    st.session_state.assets.pop(i)
+                    st.rerun()
+
         # --- 6. HAUSHALTSBUCH ---
         with st.expander("🏠 Haushaltsbuch (Ausgaben)", expanded=False):
             ausgaben_kategorien = ["Wohnen", "Mobilität", "Lebensmittel", "Versicherungen", "Gesundheit", "Freizeit", "Sonstiges"]
@@ -325,6 +424,82 @@ def render_sidebar():
                 ausgaben_input[kat] = c1.number_input(f"{kat}", value=st.session_state.get(f"c_{kat}", 1200.0 if kat=="Wohnen" else 200.0), min_value=0.0, key=f"c_{kat}")
                 anpassungsfaktor_input[kat] = c2.slider(f"RV%", 0, 200, st.session_state.get(f"a_{kat}", 100), key=f"a_{kat}", label_visibility="collapsed")
 
+        # --- 6b. BEFRISTETE AUSGABEN ---
+        if "befristete_ausgaben" not in st.session_state:
+            st.session_state.befristete_ausgaben = []
+        if "ba_edit_idx" not in st.session_state:
+            st.session_state.ba_edit_idx = None
+        if "ba_show_add" not in st.session_state:
+            st.session_state.ba_show_add = False
+
+        with st.expander("⏱️ Befristete Ausgaben", expanded=False):
+            st.caption("Zeitlich begrenzte Kosten (Kredit, Unterhalt, etc.)")
+            
+            if not st.session_state.ba_show_add and st.session_state.ba_edit_idx is None:
+                if st.button("➕ Neue befristete Ausgabe"):
+                    st.session_state.ba_show_add = True
+                    st.rerun()
+            
+            if st.session_state.ba_show_add or st.session_state.ba_edit_idx is not None:
+                is_edit = st.session_state.ba_edit_idx is not None
+                curr = st.session_state.befristete_ausgaben[st.session_state.ba_edit_idx] if is_edit else {
+                    "name": "Neue Ausgabe", "betrag_mtl": 500.0, "start": aktuelles_jahr, "ende": aktuelles_jahr + 10,
+                    "kategorie": "", "inflationsgebunden": False
+                }
+                st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
+                ba_name = st.text_input("Name", value=curr["name"], key="ba_name")
+                ba_betrag = st.number_input("Betrag (€/mtl.)", value=float(curr["betrag_mtl"]), min_value=0.0, key="ba_betrag")
+                ba_c1, ba_c2 = st.columns(2)
+                ba_start = ba_c1.number_input("Von Jahr", value=int(curr["start"]), min_value=2000, key="ba_start")
+                ba_ende = ba_c2.number_input("Bis Jahr", value=int(curr["ende"]), min_value=ba_start, key="ba_ende")
+                
+                # Kategorie: bestehende wählen ODER neue eingeben
+                kat_optionen = ausgaben_kategorien + ["— Neue Kategorie —"]
+                curr_kat = curr.get("kategorie", "")
+                if curr_kat in ausgaben_kategorien:
+                    kat_idx = ausgaben_kategorien.index(curr_kat)
+                else:
+                    kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
+                
+                ba_kat_sel = st.selectbox("Kategorie", kat_optionen, index=kat_idx, key="ba_kat_sel")
+                if ba_kat_sel == "— Neue Kategorie —":
+                    ba_kat = st.text_input("Neue Kategorie", value=curr_kat if curr_kat not in ausgaben_kategorien else "", key="ba_kat_new")
+                else:
+                    ba_kat = ba_kat_sel
+                
+                ba_infl = st.checkbox("Steigt mit Inflation", value=curr.get("inflationsgebunden", False), key="ba_infl")
+                
+                bc1, bc2 = st.columns(2)
+                if bc1.button("💾 Speichern", key="ba_save"):
+                    new_ba = {"name": ba_name, "betrag_mtl": ba_betrag, "start": ba_start, "ende": ba_ende,
+                              "kategorie": ba_kat if ba_kat else ba_name, "inflationsgebunden": ba_infl}
+                    if is_edit:
+                        st.session_state.befristete_ausgaben[st.session_state.ba_edit_idx] = new_ba
+                    else:
+                        st.session_state.befristete_ausgaben.append(new_ba)
+                    st.session_state.ba_edit_idx, st.session_state.ba_show_add = None, False
+                    st.rerun()
+                if bc2.button("❌ Abbrechen", key="ba_cancel"):
+                    st.session_state.ba_edit_idx, st.session_state.ba_show_add = None, False
+                    st.rerun()
+            
+            for i, ba in enumerate(st.session_state.befristete_ausgaben):
+                col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+                col1.write(f"**{ba['name']}**\n{ba['betrag_mtl']:.0f}€ bis {ba['ende']}")
+                if col2.button("✏️", key=f"ba_e_{i}"):
+                    st.session_state.ba_edit_idx, st.session_state.ba_show_add = i, False
+                    st.rerun()
+                if col3.button("🗑️", key=f"ba_d_{i}"):
+                    st.session_state.befristete_ausgaben.pop(i)
+                    st.rerun()
+
+        # Dynamische Kategorien: aus befristeten Ausgaben neue Kategorien sammeln
+        alle_kategorien = list(ausgaben_kategorien)
+        for ba in st.session_state.befristete_ausgaben:
+            kat = ba.get('kategorie', ba['name'])
+            if kat not in alle_kategorien:
+                alle_kategorien.append(kat)
+
         # --- 7. ANNAHMEN (Inflation & Co.) ---
         with st.expander("⚙️ Annahmen (Dynamik)", expanded=False):
             st.markdown("**Inflationsraten (% p.a.)**")
@@ -333,14 +508,13 @@ def render_sidebar():
             anp_options = {"0% (Pessimistisch)": 0.0, "1% (Moderat)": 1.0, "2% (Standard)": 2.0}
             default_idx = 2 # 2% ist Standard
             
-            # Falls ein Wert aus einer Datei geladen wurde, der nicht 0, 1 oder 2 ist, nehmen wir den nächsten
             stored_val = st.session_state.get("renten_anp_key", 2.0)
             if stored_val == 0.0: default_idx = 0
             elif stored_val == 1.0: default_idx = 1
             
             anp_label = st.selectbox("Gesetzliche Rente (Anpassung)", list(anp_options.keys()), index=default_idx, key="renten_anp_display", help="Jährliche Anpassung der GRV. Wird auch zur Projektion des Rentenwerts bis zum Start verwendet (DRV-Standard).")
             renten_anp = anp_options[anp_label]
-            st.session_state["renten_anp_key"] = renten_anp # Für Export sichern
+            st.session_state["renten_anp_key"] = renten_anp
             
             bav_anp = st.slider("Betriebsrente (bAV)", 0.0, 3.0, st.session_state.get("bav_anp_key", 1.0), 0.1, key="bav_anp_key", help="Jährliche garantierte Anpassung der bAV")
             
@@ -356,9 +530,11 @@ def render_sidebar():
             "aktuelles_brutto": aktuelles_brutto, "aktuelles_netto": aktuelles_netto,
             "ausgaben_input": ausgaben_input, "anpassungsfaktor_input": anpassungsfaktor_input,
             "einnahmen": st.session_state.einnahmen, "show_values": show_values,
-            "ausgaben_kategorien": ausgaben_kategorien, "aktuelles_jahr": aktuelles_jahr,
+            "ausgaben_kategorien": alle_kategorien, "aktuelles_jahr": aktuelles_jahr,
             "kinderzahl": kinderzahl, "kirchensteuer_satz": kirchensteuer_satz,
             "inflation_rate": infl_rate, "rentenanpassung_rate": renten_anp,
             "bav_anpassung_rate": bav_anp, "startvermoegen": startvermoegen,
-            "kapitalrendite": rendite
+            "kapitalrendite": rendite,
+            "befristete_ausgaben": st.session_state.befristete_ausgaben,
+            "assets": st.session_state.assets
         }

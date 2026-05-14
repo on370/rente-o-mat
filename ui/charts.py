@@ -75,17 +75,25 @@ def _get_color_by_name(name, i=0):
     
     return palette[i % len(palette)]
 
+def _fmt_date(decimal_year):
+    """Konvertiert Dezimaljahr (z.B. 2031.083) in lesbares Format (MM/YYYY)."""
+    year = int(decimal_year)
+    month = int(round((decimal_year - year) * 12)) + 1
+    if month > 12: 
+        month = 1
+        year += 1
+    return f"{month:02d}/{year}"
+
 def create_trend_chart(df, meilensteine, show_tax_rate=False):
     """
-    Erstellt ein gestapeltes Balkendiagramm für das Brutto-Einkommen (aufgeschlüsselt nach Quellen)
-    und Linien für Bedarf, Netto-Einkommen sowie optional den Steuersatz.
+    Erstellt ein gestapeltes Balkendiagramm für das Brutto-Einkommen.
+    Meilensteine werden als Symbole in der Legende und gestrichelte Linien dargestellt.
     """
-    # Subplots erstellen (zweite Y-Achse für Steuersatz)
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
     # 1. Gestapelte Balken für Einkommensquellen
     exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder", "Gesetzliche Rente (Potenzial)"]
-    income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_") and not c.startswith("ASSET_VAL_")]
+    income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_") and not c.startswith("ASSET_VAL_") and not c.startswith("_debug")]
     
     for i, col in enumerate(income_cols):
         fig.add_trace(
@@ -96,61 +104,55 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
             secondary_y=False
         )
         
-    # Rentenabschlag & Beitragsverlust als schraffierte Balken on top darstellen (potenzielles Einkommen)
-    if "Rentenabschlag" in df.columns and df["Rentenabschlag"].sum() > 0:
-        fig.add_trace(
-            go.Bar(
-                x=df["Jahr"], y=df["Rentenabschlag"], name="Rentenabschlag (0,3%/Mon.)", 
-                marker=dict(
-                    color="rgba(203, 67, 53, 0.1)", 
-                    line=dict(color="#CB4335", width=0),
-                    pattern=dict(shape="/", fgcolor="#CB4335", fillmode="overlay")
-                )
-            ),
-            secondary_y=False
-        )
-    
-    if "Beitragsverlust" in df.columns and df["Beitragsverlust"].sum() > 0:
-        fig.add_trace(
-            go.Bar(
-                x=df["Jahr"], y=df["Beitragsverlust"], name="Beitragsverlust (fehlende EP)", 
-                marker=dict(
-                    color="rgba(203, 67, 53, 0.05)", 
-                    line=dict(color="#E74C3C", width=0),
-                    pattern=dict(shape="x", fgcolor="#E74C3C", fillmode="overlay")
-                )
-            ),
-            secondary_y=False
-        )
-    
-    # 2. Linie für Bedarf
+    # 2. Linie für Bedarf & Netto
     fig.add_trace(
         go.Scatter(x=df["Jahr"], y=df["Bedarf"], name="Bedarf (Ausgaben)", line=dict(color='#CB4335', width=3)),
         secondary_y=False
     )
-
-    # 3. Linie für Netto-Einkommen (Dunkles Anthrazit für maximale Sichtbarkeit)
     fig.add_trace(
         go.Scatter(x=df["Jahr"], y=df["Netto-Einkommen"], name="Netto-Einkommen", line=dict(color='#212F3D', width=3, dash='dot')),
         secondary_y=False
     )
     
-    # 4. Optionale Linie für Steuersatz
     if show_tax_rate:
         fig.add_trace(
             go.Scatter(x=df["Jahr"], y=df["Steuersatz"], name="Steuersatz (%)", line=dict(color='#7F8C8D', width=2, dash='dot')),
             secondary_y=True
         )
     
-    # Meilensteine hinzufügen
-    for m in meilensteine:
-        fig.add_vline(x=m["jahr"], line_width=2, line_dash="dash", line_color=m["color"])
-        fig.add_annotation(
-            x=m["jahr"], y=1.1, yref="paper",
-            text=f"{m['label']}<br>{m['jahr']}",
-            showarrow=False, font=dict(color=m["color"], size=10),
-            bgcolor="white", opacity=0.9
+    # 3. Meilensteine als Legendeneinträge und Linien (mit Stacking-Logik)
+    symbols = ["circle", "square", "diamond", "triangle-up", "star", "hexagram"]
+    jahr_counts = {} # Zum Tracking von Kollisionen
+    
+    for i, m in enumerate(meilensteine):
+        sym = symbols[i % len(symbols)]
+        date_label = _fmt_date(m["jahr"])
+        
+        # Stacking-Offset berechnen
+        jahr = round(m["jahr"], 4)
+        offset_idx = jahr_counts.get(jahr, 0)
+        jahr_counts[jahr] = offset_idx + 1
+        
+        # Y-Position leicht unter der X-Achse (gestapelt)
+        # Wir nutzen einen kleinen negativen Wert. Plotly skaliert das meist mit.
+        # Um sicherzugehen, dass es sichtbar ist, setzen wir cliponaxis=False.
+        y_pos = -(offset_idx * 250) # Statischer Offset in Euro-Einheiten
+        
+        # Punkt für Legende & Position im Chart
+        fig.add_trace(
+            go.Scatter(
+                x=[m["jahr"]], y=[y_pos], 
+                name=f"{m['label']} ({date_label})",
+                mode='markers',
+                marker=dict(symbol=sym, size=12, color=m["color"], line=dict(width=1, color="white")),
+                showlegend=True,
+                cliponaxis=False # Wichtig für Position außerhalb der Achse
+            ),
+            secondary_y=False
         )
+        
+        # Die vertikale Linie
+        fig.add_vline(x=m["jahr"], line_width=2, line_dash="dash", line_color=m["color"])
 
     # Layout-Optimierung
     fig.update_layout(
@@ -158,12 +160,14 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
         hovermode="x unified", 
         barmode='stack',
         bargap=0.15,
-        margin=dict(t=100),
+        margin=dict(t=50),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         separators=",."
     )
     
-    fig.update_yaxes(title_text="Euro pro Monat", secondary_y=False)
+    # Y-Achse etwas nach unten erweitern für Symbole
+    y_min = -750 if meilensteine else 0
+    fig.update_yaxes(title_text="Euro pro Monat", secondary_y=False, range=[y_min, None])
     if show_tax_rate:
         fig.update_yaxes(title_text="Steuersatz (%)", secondary_y=True, range=[0, 50])
         

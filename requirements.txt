@@ -1,3 +1,5 @@
 streamlit>=1.30
 pandas>=2.0
 plotly>=5.18
+fpdf2>=2.7.9
+kaleido==0.2.1

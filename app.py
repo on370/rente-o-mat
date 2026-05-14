@@ -36,8 +36,104 @@ p = render_sidebar()
 jahre_liste = list(range(p['aktuelles_jahr'], p['geburtsjahr'] + 96))
 df_timeline = generate_trend_data(jahre_liste, p)
 
+# --- HELPER: DEUTSCHE FORMATIERUNG & EXPORT ---
+def st_display_table(df, filename, money_cols=None, pct_cols=None):
+    """Hilfsfunktion zum Anzeigen einer formatierten Tabelle mit CSV-Download."""
+    if money_cols is None: money_cols = []
+    if pct_cols is None: pct_cols = []
+    
+    # UI Formatting
+    format_dict = {}
+    for col in df.columns:
+        if col in money_cols:
+            format_dict[col] = lambda x: f"{x:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "")
+        elif col in pct_cols:
+            format_dict[col] = lambda x: f"{x:,.1f} %".replace(".", ",")
+        elif col == "Jahr" or col == "Alter":
+            format_dict[col] = lambda x: f"{int(x)}"
+            
+    st.dataframe(df.style.format(format_dict), width='stretch')
+    
+    # CSV Export (ohne Euro-Zeichen, mit Semikolon und Dezimalkomma)
+    csv = df.to_csv(index=False, sep=';', decimal=',')
+    st.download_button(
+        label=f"📥 {filename} als CSV speichern",
+        data=csv,
+        file_name=f"{filename}.csv",
+        mime='text/csv',
+    )
+
+def capture_charts_for_pdf(p, df_timeline):
+    """Erzeugt alle Diagramme als PNG-Bytes für das PDF."""
+    import io
+    from ui.charts import create_sankey, create_trend_chart, create_wealth_chart
+    
+    charts = {}
+    
+    # Meilensteine für Trends
+    meilensteine = [{"jahr": p['aktuelles_jahr'], "label": "Start", "color": "#7F8C8D"}]
+    if p['atz_simulieren']:
+        meilensteine.append({"jahr": p['atz_start'], "label": "ATZ-A", "color": "#2E86C1"})
+        meilensteine.append({"jahr": p['atz_start'] + p['atz_dauer']/2, "label": "ATZ-P", "color": "#F1C40F"})
+    meilensteine.append({"jahr": p['rentenbeginn'], "label": "Rente", "color": "#28B463"})
+
+    try:
+        # 1. Sankey Aktiv (Status Quo)
+        sq_labels, sq_sources, sq_targets, sq_values = [], [], [], []
+        def add_sq(s, t, v):
+            if v > 0.1:
+                if s not in sq_labels: sq_labels.append(s)
+                if t not in sq_labels: sq_labels.append(t)
+                sq_sources.append(sq_labels.index(s)); sq_targets.append(sq_labels.index(t)); sq_values.append(v)
+        
+        a_sq_sum = sum(p['ausgaben_input'].values())
+        d_sq = p['aktuelles_netto'] - a_sq_sum
+        add_sq("Aktuelles Netto", "Haushalts-Budget", p['aktuelles_netto'])
+        if d_sq > 0: add_sq("Haushalts-Budget", "Ueberschuss", d_sq)
+        elif d_sq < 0: add_sq("Unterdeckung", "Haushalts-Budget", abs(d_sq))
+        for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
+        
+        fig_sq = create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", False)
+        charts["sankey_aktiv"] = fig_sq.to_image(format="png", width=1000, height=500)
+        
+        # 2. Sankey Rente (Erstes Rentenjahr)
+        renten_jahre = df_timeline[df_timeline["Phase"] == "Rente"]
+        if not renten_jahre.empty:
+            res = renten_jahre.iloc[0].to_dict()
+            l_r, s_r, t_r, v_r = [], [], [], []
+            def add_r(s, t, v):
+                if v > 0.1:
+                    if s not in l_r: l_r.append(s)
+                    if t not in l_r: l_r.append(t)
+                    s_r.append(l_r.index(s)); t_r.append(l_r.index(t)); v_r.append(v)
+            
+            exclude = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder", "Gesetzliche Rente (Potenzial)"]
+            income_sources = {k: v for k, v in res.items() if k not in exclude and not k.startswith("EXP_") and not k.startswith("ASSET_VAL_") and not k.startswith("_debug") and v > 0}
+            for k, v in income_sources.items(): add_r(k, "Brutto-Einkommen", v)
+            add_r("Brutto-Einkommen", "Steuern & Abgaben", res['Steuern'] + res['Sozialabgaben'])
+            add_r("Brutto-Einkommen", "Netto-Verfügbar", res['Netto-Einkommen'])
+            add_r("Netto-Verfügbar", "Bedarf (Lebenshaltung)", res['Bedarf'])
+            ue = res['Überschuss/Defizit']
+            if ue > 0: add_r("Netto-Verfügbar", "Ueberschuss", ue)
+            elif ue < 0: add_r("Defizit", "Netto-Verfügbar", abs(ue))
+            
+            fig_r = create_sankey(l_r, s_r, t_r, v_r, f"Cashflow im 1. Rentenjahr ({int(res['Jahr'])})", False)
+            charts["sankey_rente"] = fig_r.to_image(format="png", width=1000, height=500)
+            
+        # 3. Trends
+        fig_wealth = create_wealth_chart(df_timeline)
+        charts["trend_assets"] = fig_wealth.to_image(format="png", width=1000, height=500)
+        
+        fig_income = create_trend_chart(df_timeline, meilensteine)
+        charts["trend_income"] = fig_income.to_image(format="png", width=1000, height=500)
+        
+    except Exception as e:
+        st.error(f"Fehler bei der Bild-Generierung: {e}")
+        
+    return charts
+
 # --- HAUPTBEREICH (TABS) ---
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Sankey-Analyse", "📈 Zeitliche Entwicklung", "💰 Vermögensentwicklung", "⚖️ Strategie-Check"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Sankey-Analyse", "📈 Zeitliche Entwicklung", "💰 Vermögensentwicklung", "⚖️ Strategie-Check", "📑 Dein Briefing"])
 
 # --- TAB 1: SANKEY ---
 with tab1:
@@ -61,6 +157,13 @@ with tab1:
         elif d_sq < 0: add_sq("Liquiditäts-Unterdeckung", "Haushalts-Budget", abs(d_sq))
         for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
         st.plotly_chart(create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", p['show_values']), width='stretch')
+        with st.expander("Daten zum Status Quo anzeigen"):
+            import pandas as pd
+            df_sq_data = pd.DataFrame([
+                {"Kategorie": "Einnahmen", "Posten": "Aktuelles Netto", "Betrag": p['aktuelles_netto']},
+                {"Kategorie": "Bilanz", "Posten": "Überschuss/Defizit", "Betrag": d_sq}
+            ] + [{"Kategorie": "Ausgaben", "Posten": k, "Betrag": v} for k, v in p['ausgaben_input'].items()])
+            st_display_table(df_sq_data, "Status_Quo_Cashflow", money_cols=["Betrag"])
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -181,6 +284,18 @@ with tab1:
             if val > 0: add_r("Verfügbares Budget", k, val)
             
         st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {b_jahr}", p['show_values']), width='stretch')
+        with st.expander(f"Details zum Jahr {b_jahr} anzeigen"):
+            # Relevante Zeilen aus 'res' extrahieren
+            sim_data = []
+            for k, v in res.items():
+                if k in ["Brutto", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "EkSt", "Soli", "KiSt", "Sozialabgaben"]:
+                    sim_data.append({"Posten": k, "Wert": v})
+                elif k.startswith("EXP_") or k.startswith("Entnahme: ") or k in p['ausgaben_kategorien']:
+                    sim_data.append({"Posten": k.replace("EXP_", ""), "Wert": v})
+            
+            import pandas as pd
+            df_sim_year = pd.DataFrame(sim_data)
+            st_display_table(df_sim_year, f"Simulation_{b_jahr}", money_cols=["Wert"])
 
 # --- TAB 2: TREND ---
 with tab2:
@@ -202,7 +317,10 @@ with tab2:
     st.plotly_chart(create_trend_chart(df_timeline, meilensteine, show_tax_rate=show_tax_rate), width='stretch')
     
     with st.expander("Datentabelle anzeigen"):
-        st.dataframe(df_timeline.style.format("{:.2f}€", subset=["Brutto", "Steuern", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"]).format("{:.1f}%", subset=["Steuersatz"]), width='stretch')
+        st_display_table(df_timeline[["Jahr", "Phase", "Brutto", "Steuern", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Steuersatz"]], 
+                         "Finanzielle_Entwicklung", 
+                         money_cols=["Brutto", "Steuern", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit"],
+                         pct_cols=["Steuersatz"])
 
 # --- TAB 3: VERMÖGEN ---
 with tab3:
@@ -216,12 +334,9 @@ with tab3:
         # Bereinige Spaltennamen für die Anzeige (Entferne Präfix)
         df_display = df_timeline[["Jahr"] + asset_cols].copy()
         df_display.columns = ["Jahr"] + [c.replace("ASSET_VAL_", "") for c in asset_cols]
+        new_asset_cols = [c.replace("ASSET_VAL_", "") for c in asset_cols]
         
-        st.dataframe(
-            df_display.style.format("{:.0f}", subset=["Jahr"])
-            .format("{:,.2f} €", subset=[c.replace("ASSET_VAL_", "") for c in asset_cols]), 
-            width='stretch'
-        )
+        st_display_table(df_display, "Vermoegensentwicklung", money_cols=new_asset_cols)
 
 # --- TAB 4: STRATEGIE ---
 with tab4:
@@ -245,9 +360,231 @@ with tab4:
             st.warning("Kein Break-Even-Punkt innerhalb der Simulation (bis Alter 100) gefunden. Ein früherer Eintritt scheint in diesem Szenario langfristig vorteilhafter oder der Unterschied ist zu gering.")
 
         st.plotly_chart(create_break_even_chart(df_be, be_alter), width='stretch')
+        with st.expander("Break-Even Datentabelle anzeigen"):
+            st_display_table(df_be, "Break_Even_Analyse", money_cols=["Netto_A", "Netto_B", "Kumuliert_A", "Kumuliert_B"])
     except Exception as e:
         st.error(f"Fehler bei der Strategie-Berechnung: {e}")
         st.info("Dies kann an fehlenden Daten in einer importierten Datei liegen. Bitte prüfe deine Eingaben in der Sidebar.")
+
+# --- TAB 5: DEIN BRIEFING ---
+with tab5:
+    st.subheader("📑 Dein persönliches Briefing")
+    st.caption("Eine umfassende Zusammenfassung deiner Finanzplanung, aller Annahmen und rechtlichen Grundlagen.")
+    
+    with st.expander("📊 Zusammenfassung deiner Lebens-Finanz-Planung", expanded=True):
+        st.markdown("**Die wichtigsten Fakten und Projektionen aus deiner persönlichen Simulation.**")
+        
+        # Finde erstes Rentenjahr
+        renten_jahre = df_timeline[df_timeline["Phase"] == "Rente"]
+        erstes_rentenjahr = renten_jahre.iloc[0] if not renten_jahre.empty else None
+        
+        # Endvermögen (letztes Jahr der Simulation)
+        letztes_jahr = df_timeline.iloc[-1]
+        end_vermoegen = letztes_jahr.get("ASSET_VAL_Cash-Reserven (kum.)", 0)
+        # Alle anderen Assets addieren
+        for col in df_timeline.columns:
+            if col.startswith("ASSET_VAL_") and col != "ASSET_VAL_Cash-Reserven (kum.)":
+                end_vermoegen += letztes_jahr.get(col, 0)
+                
+        # Ø Steuersatz Rente
+        avg_tax_rente = renten_jahre["Steuersatz"].mean() if not renten_jahre.empty else 0
+        
+        # Break Even Daten
+        try:
+            df_be, be_jahr, be_alter = calculate_break_even_data(p)
+            be_text = f"**{be_jahr}** (Alter **{be_alter}**)" if be_jahr else "Kein Break-Even bis Alter 100"
+        except:
+            be_text = "Nicht verfügbar"
+
+        if erstes_rentenjahr is not None:
+            rentenluecke = erstes_rentenjahr["Bedarf"] - erstes_rentenjahr["Netto-Einkommen"]
+            
+            # Engine liefert Monats-Werte
+            abschlag_eur_mtl = erstes_rentenjahr.get("Rentenabschlag", 0)
+            abschlag_eur_jahr = abschlag_eur_mtl * 12
+            
+            # Beitragsverlust (Euro pro Monat) / Rentenwert = Fehlende EP gesamt
+            rentenwert_dyn = erstes_rentenjahr.get("_debug_rentenwert", 39.32)
+            beitragsverlust_ep = erstes_rentenjahr.get("Beitragsverlust", 0) / rentenwert_dyn if rentenwert_dyn > 0 else 0
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric(f"Finanzlücke im 1. Rentenjahr ({int(erstes_rentenjahr['Jahr'])})", f"{rentenluecke:,.0f} € mtl.".replace(",", "X").replace(".", ",").replace("X", "."), delta="Dein Vermögen muss dies decken" if rentenluecke > 0 else "Du hast einen Überschuss", delta_color="inverse" if rentenluecke > 0 else "normal")
+            c2.metric("Projiziertes Gesamtvermögen (Alter 95)", f"{end_vermoegen:,.0f} €".replace(",", "X").replace(".", ",").replace("X", "."), help="Summe aus Liquidität und allen simulierten Assets am Ende des Betrachtungszeitraums.")
+            c3.metric("Ø Steuersatz im Ruhestand", f"{avg_tax_rente:.1f} %".replace(".", ","))
+            
+            st.divider()
+            st.markdown("### Detail-Fakten")
+            
+            renten_jahr = int(p['rentenbeginn'])
+            renten_alter = renten_jahr - p['geburtsjahr']
+            jahre_im_ruhestand = 95 - renten_alter
+            
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                st.markdown(f"""
+                - **Gewählter Rentenbeginn:** {renten_jahr} (mit Alter {renten_alter})
+                - **Break-Even (im Vergleich zur Regelrente):** {be_text}
+                - **Dauer der Auszahlungsphase:** {jahre_im_ruhestand} Jahre (bis Alter 95 berechnet)
+                """)
+            with col_f2:
+                bedarf_summe = renten_jahre['Bedarf'].sum() * 12  # Bedarf in df_timeline ist monatlich
+                st.markdown(f"""
+                - **Rentenabschlag (durch vorzeitigen Beginn):** {abschlag_eur_mtl:,.2f} € mtl. (ca. {abschlag_eur_jahr:,.0f} € / Jahr)
+                - **Fehlende Rentenpunkte (Beitragsverlust):** ~ {beitragsverlust_ep:.2f} EP
+                - **Kumulierter Gesamtbedarf im Ruhestand:** {bedarf_summe:,.0f} €
+                """.replace(",", "X").replace(".", ",").replace("X", "."))
+        else:
+            st.info("Simulation erreicht kein Rentenjahr.")
+
+    with st.expander("📍 Dein Status Quo (Aktivphase Heute)"):
+        st.markdown(f"**Deine aktuelle Ausgangssituation im Jahr {p['aktuelles_jahr']}:**")
+        a_sq_sum = sum(p['ausgaben_input'].values())
+        d_sq = p['aktuelles_netto'] - a_sq_sum
+        
+        st.write(f"- **Monatliches Nettoeinkommen:** {p['aktuelles_netto']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.write(f"- **Monatliche Ausgaben:** {a_sq_sum:,.2f} €".replace(",", "X").replace(".", ",").replace("X", "."))
+        if d_sq > 0:
+            st.success(f"Du hast einen monatlichen Liquiditäts-Überschuss von **{d_sq:,.2f} €**. Dieser kann zum Vermögensaufbau genutzt werden.".replace(",", "X").replace(".", ",").replace("X", "."))
+        else:
+            st.warning(f"Du hast eine monatliche Unterdeckung von **{abs(d_sq):,.2f} €**. Überprüfe deine Ausgaben.".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    with st.expander("🗓️ Die Timeline (Meilensteine)"):
+        st.markdown("**Chronologischer Ablauf der wichtigsten Ereignisse.**")
+        
+        timeline_html = "<ul>"
+        timeline_html += f"<li><b>{p['aktuelles_jahr']}:</b> Start der Simulation (Aktivphase)</li>"
+        
+        if p['atz_simulieren']:
+            atz_mitte = p['atz_start'] + (p['atz_dauer'] / 2)
+            timeline_html += f"<li><b>{int(p['atz_start'])}:</b> Beginn der Altersteilzeit (Aktivphase, volles Arbeiten bei reduziertem Gehalt)</li>"
+            timeline_html += f"<li><b>{int(atz_mitte)}:</b> Wechsel in die passive Altersteilzeit (Freistellung)</li>"
+            
+        timeline_html += f"<li><b>{int(p['rentenbeginn'])}:</b> Renteneintritt</li>"
+        
+        # Weitere Einkünfte
+        for e in p['einnahmen']:
+            if e['start'] > p['aktuelles_jahr'] and e['start'] != p['rentenbeginn']:
+                timeline_html += f"<li><b>{int(e['start'])}:</b> Start der Auszahlung: {e['name']}</li>"
+                
+        timeline_html += "</ul>"
+        st.markdown(timeline_html, unsafe_allow_html=True)
+
+    with st.expander("⚙️ Szenario-Parameter & Rechtliches"):
+        st.markdown("**Alle getroffenen Annahmen und gesetzlichen Grundlagen.**")
+        st.write("Die Simulation basiert auf den folgenden dynamischen Annahmen:")
+        
+        params_md = f"""
+        * **Ausgaben-Inflation:** {p['inflation_rate']} % p.a.
+        * **Rentenanpassung (GRV):** {p['rentenanpassung_rate']} % p.a.
+        * **Gehaltsdynamik:** {p['gehalts_dynamik']} % p.a. (reale Steigerung)
+        * **Kirchensteuer:** {p['kirchensteuer_satz'] * 100} %
+        * **Krankenversicherung:** {8.0} % (zzgl. Pflegeversicherung nach Kinderzahl)
+        
+        **Rechtsstand:** 
+        Die Steuerberechnung erfolgt iterativ pro Jahr. Es wird ein Näherungsverfahren für das zu versteuernde Einkommen (zvE) angewandt, das den Abzug von Vorsorgeaufwendungen (gemäß EStG 2024) simuliert. Die Altersteilzeit berücksichtigt die gesetzliche Mindestaufstockung in der Rentenversicherung auf 80 % (§ 3 AltTZG).
+        """
+        st.markdown(params_md)
+
+    with st.expander("🧮 Beispielrechnung (Deep Dive Erstes Rentenjahr)"):
+        st.markdown("**Vollständiges mathematisches Audit-Protokoll zur Nachvollziehbarkeit.**")
+        st.info("Diese Rechnung zeigt transparent, wie die Engine aus deinen Bruttoeinnahmen im ersten Rentenjahr das exakte Netto ermittelt.")
+        if erstes_rentenjahr is not None:
+            j = int(erstes_rentenjahr['Jahr'])
+            b = erstes_rentenjahr['Brutto']
+            e = erstes_rentenjahr['EkSt']
+            s = erstes_rentenjahr['Soli']
+            k = erstes_rentenjahr['KiSt']
+            sv = erstes_rentenjahr['Sozialabgaben']
+            n = erstes_rentenjahr['Netto-Einkommen']
+            zve = erstes_rentenjahr.get('_debug_zve', 0)
+            st_b = erstes_rentenjahr.get('_debug_st_b', 0)
+            
+            # Brutto aufschlüsseln
+            brutto_quellen = ""
+            for einnahme in p['einnahmen']:
+                if einnahme['start'] <= j <= einnahme.get('ende', 9999):
+                    v = erstes_rentenjahr.get(einnahme['name'], 0)
+                    if v > 0:
+                        v_str = f"{v:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                        brutto_quellen += f"  - {einnahme['name']} ({einnahme['typ']}): `{v_str}`\n"
+            
+            # Formatierte Strings
+            f_b = f"{b:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_sv = f"{sv:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_st_b = f"{st_b:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_zve = f"{zve:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_e = f"{e:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_s = f"{s:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_k = f"{k:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_n = f"{n:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            f_tax = f"{e+s+k:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+            quote = f"{((b - n) / b * 100):.1f} %".replace(".", ",") if b > 0 else "0,0 %"
+            
+            calc_md = f"""
+### Jahr {j} (Erstes volles Rentenjahr)
+
+#### 1. Einnahmen & Sozialversicherung
+**Summe aller Bruttoeinkünfte:** `{f_b}`
+*Zusammensetzung:*
+{brutto_quellen}
+
+**Abzug Sozialversicherung (KV/PV):** `- {f_sv}`
+*(Die SV wird auf pflichtige Rentenanteile nach § 249 SGB V berechnet)*
+
+#### 2. Steuerliche Bemessungsgrundlage
+Nicht jeder Euro Rente ist steuerpflichtig. Der Besteuerungsanteil der gesetzlichen Rente richtet sich nach dem Kohortenjahr des Rentenbeginns.
+* **Steuerpflichtige Basis-Einnahmen:** `{f_st_b}`
+* **Abzug Vorsorgeaufwendungen (Näherung):** `- {f_sv}`
+* **Zu versteuerndes Einkommen (zvE):** `{f_zve}`
+
+#### 3. Steuerberechnung (nach Grundtabelle)
+Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) angewandt.
+* **Einkommensteuer:** `{f_e}`
+* **Solidaritätszuschlag:** `{f_s}`
+* **Kirchensteuer:** `{f_k}`
+
+#### 4. Endergebnis
+*Brutto ({f_b}) minus SV ({f_sv}) minus Steuern ({f_tax})*
+* **Netto-Einkommen:** **`{f_n}`**
+* **Reale Steuer- & Abgabenquote:** `{quote}`
+            """
+            st.markdown(calc_md)
+        else:
+            st.warning("Kein Rentenjahr in der Simulation erreicht.")
+
+    with st.expander("🧑‍💻 Für Auditoren & Entwickler: Quellcode der Engine"):
+        st.markdown("**100% Transparenz.** Hier findest du den originalen Python-Code, der exakt in diesem Moment in der Engine (`logic/engine.py`) läuft. Du kannst ihn in einer beliebigen Python-Umgebung kopieren und unsere Mathematik verifizieren.")
+        try:
+            with open("logic/engine.py", "r", encoding="utf-8") as f:
+                code_content = f.read()
+            st.code(code_content, language="python")
+        except Exception as e:
+            st.error(f"Konnte Quellcode nicht laden: {e}")
+
+    st.divider()
+    
+    # PDF Export Button
+    col_pdf1, col_pdf2, col_pdf3 = st.columns([1, 2, 1])
+    with col_pdf2:
+        try:
+            from logic.pdf_export import create_briefing_pdf
+            
+            # Bilder erfassen
+            with st.spinner("Erzeuge Diagramme für PDF..."):
+                chart_imgs = capture_charts_for_pdf(p, df_timeline)
+            
+            pdf_bytes = create_briefing_pdf(p, df_timeline, chart_images=chart_imgs)
+            st.download_button(
+                label="📄 Komplettes Briefing als PDF herunterladen",
+                data=pdf_bytes,
+                file_name=f"RenteOMat_Briefing_{p.get('nutzer_name', 'Nutzer')}.pdf",
+                mime="application/pdf",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Fehler bei der PDF-Generierung: {e}")
+            st.info("Bitte stelle sicher, dass 'kaleido' und 'fpdf2' installiert sind.")
 
 # --- FOOTER & DISCLAIMER ---
 st.divider()

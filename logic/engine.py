@@ -15,6 +15,7 @@ from logic.sozialversicherung import (
     berechne_vorsorgeaufwendungen_steuerlich
 )
 from logic.rentenrecht import berechne_monate_frueher
+from config import RENTENWERT_AKTUELL
 
 
 def get_phase(jahr, atz_simulieren, atz_start, rentenbeginn):
@@ -352,7 +353,11 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
         "Sozialabgaben": sv, "Netto-Einkommen": netto, "Netto-GRV": grv_netto, "Bedarf": ausgaben,
         "Überschuss/Defizit": netto - ausgaben, "Rentenabschlag": rentenabschlag_gesamt,
         "Beitragsverlust": beitragsverlust_gesamt, "Gesetzliche Rente (Potenzial)": potential_gesamt,
-        "Kapitalzuwachs_Sonder": kapitalzuwachs_sonder
+        "Kapitalzuwachs_Sonder": kapitalzuwachs_sonder,
+        "_debug_zve": zve_jahr,
+        "_debug_st_b": st_b * 12 if phase == "Rente" else b_g * 12,
+        "_debug_sv": sv * 12,
+        "_debug_rentenwert": (RENTENWERT_AKTUELL * (1 + rentenanpassung_rate / 100) ** max(0, jahr - aktuelles_jahr)) if phase == "Rente" else 0
     }
     res.update(income_details); res.update(ausgaben_details); res.update(asset_results)
     return res

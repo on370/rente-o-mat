@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "0065" # Widget Policy Fix (ATZ Dauer)
+BUILD_ID = "0073" # Chart Update: Legend-based Milestones with Symbols
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

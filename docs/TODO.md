@@ -56,6 +56,7 @@
     - [ ] Individuelle Verzinsung pro Vermögenswert
     - [ ] Anbindung bAV-Einmalzahlung (siehe [Konzept](docs/konzept_bav_vermoegen.md))
     - [ ] Umstellung auf Closed-Loop-Simulation (siehe [Konzept](docs/konzept_vermoegenswerte_closed_loop.md))
+    - [ ] **Optionaler "Auto-Modus" für Entnahmen**: Algorithmisch optimierte Anpassung nach verschiedenen Strategien (Konzept noch offen)
 
 ## 📅 Geplant (Spätere Sitzungen)
 - [ ] **100% Transparenz & Vertrauen**

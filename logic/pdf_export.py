@@ -12,8 +12,8 @@ class BriefingPDF(FPDF):
         self.nutzer_name = nutzer_name
 
     def header(self):
-        # Dokument-Überschrift (Größer)
-        self.set_font('helvetica', 'B', 16)
+        # Dokument-Überschrift (Deutlich größer)
+        self.set_font('helvetica', 'B', 18)
         self.set_text_color(41, 128, 185) # Blau
         
         titel = f"Rente-O-Mat | Persönliches Briefing für {self.nutzer_name}"
@@ -67,8 +67,8 @@ def create_briefing_pdf(params, df_timeline, chart_images=None):
         if col.startswith("ASSET_VAL_") and col != "ASSET_VAL_Cash-Reserven (kum.)":
             end_vermoegen += letztes_jahr.get(col, 0)
     
-    # 1. Zusammenfassung
-    pdf.set_font("helvetica", "B", 14)
+    # 1. Zusammenfassung (Etwas kleiner für Hierarchie)
+    pdf.set_font("helvetica", "B", 13)
     pdf.set_text_color(41, 128, 185)
     pdf.cell(0, 10, _L1("1. Zusammenfassung"), ln=True)
     pdf.set_font("helvetica", "", 11)
@@ -89,7 +89,7 @@ def create_briefing_pdf(params, df_timeline, chart_images=None):
     pdf.ln(5)
     
     # 2. Status Quo
-    pdf.set_font("helvetica", "B", 14)
+    pdf.set_font("helvetica", "B", 13)
     pdf.set_text_color(41, 128, 185)
     pdf.cell(0, 10, _L1("2. Status Quo (Aktivphase)"), ln=True)
     pdf.set_font("helvetica", "", 11)
@@ -111,7 +111,7 @@ def create_briefing_pdf(params, df_timeline, chart_images=None):
 
     # 3. Deep Dive
     pdf.add_page()
-    pdf.set_font("helvetica", "B", 14)
+    pdf.set_font("helvetica", "B", 13)
     pdf.set_text_color(41, 128, 185)
     pdf.cell(0, 10, _L1("3. Deep Dive: Erstes volles Rentenjahr"), ln=True)
     pdf.set_font("helvetica", "", 11)
@@ -141,7 +141,7 @@ def create_briefing_pdf(params, df_timeline, chart_images=None):
     # 4. Zeitliche Entwicklung (Trends)
     if chart_images and ("trend_assets" in chart_images or "trend_income" in chart_images):
         pdf.add_page()
-        pdf.set_font("helvetica", "B", 14)
+        pdf.set_font("helvetica", "B", 13)
         pdf.set_text_color(41, 128, 185)
         pdf.cell(0, 10, _L1("4. Zeitliche Entwicklung (Trends)"), ln=True)
         

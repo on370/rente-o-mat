@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "0073" # Chart Update: Legend-based Milestones with Symbols
+BUILD_ID = "0076" # Warnings suppressed & PDF Export polished
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

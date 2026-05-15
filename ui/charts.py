@@ -134,9 +134,7 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
         jahr_counts[jahr] = offset_idx + 1
         
         # Y-Position leicht unter der X-Achse (gestapelt)
-        # Wir nutzen einen kleinen negativen Wert. Plotly skaliert das meist mit.
-        # Um sicherzugehen, dass es sichtbar ist, setzen wir cliponaxis=False.
-        y_pos = -(offset_idx * 250) # Statischer Offset in Euro-Einheiten
+        y_pos = -(offset_idx * 800) # Vergrößerter Offset (800 statt 600)
         
         # Punkt für Legende & Position im Chart
         fig.add_trace(
@@ -166,7 +164,7 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     )
     
     # Y-Achse etwas nach unten erweitern für Symbole
-    y_min = -750 if meilensteine else 0
+    y_min = -2500 if meilensteine else 0
     fig.update_yaxes(title_text="Euro pro Monat", secondary_y=False, range=[y_min, None])
     if show_tax_rate:
         fig.update_yaxes(title_text="Steuersatz (%)", secondary_y=True, range=[0, 50])

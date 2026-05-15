@@ -1,5 +1,9 @@
 # Rente-O-Mat PRO - Build 0057 (Stable)
 import streamlit as st
+import warnings
+# Unterdrücke Kaleido DeprecationWarnings
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="kaleido")
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="plotly")
 from ui.sidebar import render_sidebar
 from ui.charts import create_sankey, create_trend_chart, create_wealth_chart, create_break_even_chart
 from logic.engine import calculate_financials_for_year, generate_trend_data, calculate_break_even_data
@@ -36,7 +40,16 @@ p = render_sidebar()
 jahre_liste = list(range(p['aktuelles_jahr'], p['geburtsjahr'] + 96))
 df_timeline = generate_trend_data(jahre_liste, p)
 
-# --- HELPER: DEUTSCHE FORMATIERUNG & EXPORT ---
+def get_current_meilensteine(p):
+    """Berechnet die Liste der Meilensteine basierend auf den aktuellen Parametern."""
+    meilensteine = [{"jahr": p['aktuelles_jahr'], "label": "Start", "color": "#7F8C8D"}]
+    if p.get('atz_simulieren'):
+        meilensteine.append({"jahr": p['atz_start'], "label": "ATZ-A", "color": "#2E86C1"})
+        atz_mitte = p['atz_start'] + (p['atz_dauer'] / 2)
+        meilensteine.append({"jahr": atz_mitte, "label": "ATZ-P", "color": "#F1C40F"})
+    meilensteine.append({"jahr": p['rentenbeginn'], "label": "Rente", "color": "#28B463"})
+    return meilensteine
+
 def st_display_table(df, filename, money_cols=None, pct_cols=None):
     """Hilfsfunktion zum Anzeigen einer formatierten Tabelle mit CSV-Download."""
     if money_cols is None: money_cols = []
@@ -69,13 +82,7 @@ def capture_charts_for_pdf(p, df_timeline):
     from ui.charts import create_sankey, create_trend_chart, create_wealth_chart
     
     charts = {}
-    
-    # Meilensteine für Trends
-    meilensteine = [{"jahr": p['aktuelles_jahr'], "label": "Start", "color": "#7F8C8D"}]
-    if p['atz_simulieren']:
-        meilensteine.append({"jahr": p['atz_start'], "label": "ATZ-A", "color": "#2E86C1"})
-        meilensteine.append({"jahr": p['atz_start'] + p['atz_dauer']/2, "label": "ATZ-P", "color": "#F1C40F"})
-    meilensteine.append({"jahr": p['rentenbeginn'], "label": "Rente", "color": "#28B463"})
+    meilensteine = get_current_meilensteine(p)
 
     try:
         # 1. Sankey Aktiv (Status Quo)
@@ -568,6 +575,9 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
     with col_pdf2:
         try:
             from logic.pdf_export import create_briefing_pdf
+            # Dateiname-Vorschlag bearbeitbar machen
+            default_fn = f"RenteOMat_Briefing_{p.get('nutzer_name', 'Nutzer')}"
+            fn_input = st.text_input("Vorschlag Dateiname", value=default_fn)
             
             # Bilder erfassen
             with st.spinner("Erzeuge Diagramme für PDF..."):
@@ -577,7 +587,7 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
             st.download_button(
                 label="📄 Komplettes Briefing als PDF herunterladen",
                 data=pdf_bytes,
-                file_name=f"RenteOMat_Briefing_{p.get('nutzer_name', 'Nutzer')}.pdf",
+                file_name=f"{fn_input}.pdf",
                 mime="application/pdf",
                 type="primary",
                 use_container_width=True

@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "0081" # Fixed kaleido sustainability documentation
+BUILD_ID = "0084" # Global Rerun to fix Haushaltsbuch Reset Bug
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

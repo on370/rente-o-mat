@@ -82,7 +82,7 @@ def render_sidebar():
         # Flags zurücksetzen
         st.session_state.do_import = False
         st.session_state.import_file = None
-        st.rerun()
+        st.session_state.global_rerun = True
 
     with st.sidebar:
         # --- 2. PROFIL ---
@@ -196,7 +196,7 @@ def render_sidebar():
             if uploaded_file and st.button("Importieren", width="stretch"):
                 st.session_state.import_file = uploaded_file
                 st.session_state.do_import = True
-                st.rerun()
+                st.session_state.global_rerun = True
 
         # --- 3. MEILENSTEINE ---
         rag_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
@@ -425,7 +425,7 @@ def render_sidebar():
             if not st.session_state.show_add_form and st.session_state.edit_idx is None:
                 if st.button("➕ Neu"):
                     st.session_state.show_add_form = True
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
             if st.session_state.show_add_form or st.session_state.edit_idx is not None:
                 is_edit = st.session_state.edit_idx is not None
@@ -562,23 +562,23 @@ def render_sidebar():
                         None,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
                 if c2.button("❌ Abbrechen"):
                     st.session_state.edit_idx, st.session_state.show_add_form = (
                         None,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
             for i, e in enumerate(st.session_state.einnahmen):
                 col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
                 col1.write(f"**{e['name']}**\n{e['betrag']}€")
                 if col2.button("✏️", key=f"e_{i}"):
                     st.session_state.edit_idx, st.session_state.show_add_form = i, False
-                    st.rerun()
+                    st.session_state.global_rerun = True
                 if col3.button("🗑️", key=f"d_{i}"):
                     st.session_state.einnahmen.pop(i)
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
         # --- 5b. VERMÖGENSWERTE ---
         if "assets" not in st.session_state:
@@ -599,7 +599,7 @@ def render_sidebar():
             ):
                 if st.button("➕ Neues Asset"):
                     st.session_state.asset_show_add = True
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
             if (
                 st.session_state.asset_show_add
@@ -741,13 +741,13 @@ def render_sidebar():
                         None,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
                 if ac2.button("❌ Abbrechen", key="a_cancel"):
                     st.session_state.asset_edit_idx, st.session_state.asset_show_add = (
                         None,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
             for i, asset in enumerate(st.session_state.assets):
                 col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
@@ -764,10 +764,10 @@ def render_sidebar():
                         i,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
                 if col3.button("🗑️", key=f"a_d_{i}"):
                     st.session_state.assets.pop(i)
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
         # --- 6. HAUSHALTSBUCH ---
         with st.expander("🏠 Haushaltsbuch (Ausgaben)", expanded=False):
@@ -814,7 +814,7 @@ def render_sidebar():
             ):
                 if st.button("➕ Neue befristete Ausgabe"):
                     st.session_state.ba_show_add = True
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
             if st.session_state.ba_show_add or st.session_state.ba_edit_idx is not None:
                 is_edit = st.session_state.ba_edit_idx is not None
@@ -895,13 +895,13 @@ def render_sidebar():
                         None,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
                 if bc2.button("❌ Abbrechen", key="ba_cancel"):
                     st.session_state.ba_edit_idx, st.session_state.ba_show_add = (
                         None,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
             for i, ba in enumerate(st.session_state.befristete_ausgaben):
                 col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
@@ -913,10 +913,10 @@ def render_sidebar():
                         i,
                         False,
                     )
-                    st.rerun()
+                    st.session_state.global_rerun = True
                 if col3.button("🗑️", key=f"ba_d_{i}"):
                     st.session_state.befristete_ausgaben.pop(i)
-                    st.rerun()
+                    st.session_state.global_rerun = True
 
         # Dynamische Kategorien: aus befristeten Ausgaben neue Kategorien sammeln
         alle_kategorien = list(ausgaben_kategorien)

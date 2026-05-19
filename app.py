@@ -595,3 +595,7 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
 # --- FOOTER & DISCLAIMER ---
 st.divider()
 st.caption(f"{FULL_VERSION} | **DISCLAIMER:** Achtung, der Renten-Planer ist noch in der Entwicklung und kann fehlerhaft oder unvollständig sein. Alle Angaben müssen durch den/die Nutzer:in überprüft werden. Benutzung auf eigenes Risiko.")
+
+if st.session_state.get("global_rerun"):
+    st.session_state.global_rerun = False
+    st.rerun()

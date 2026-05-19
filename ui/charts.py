@@ -84,6 +84,18 @@ def _fmt_date(decimal_year):
         year += 1
     return f"{month:02d}/{year}"
 
+def get_milestone_visual_pos(df, m_jahr):
+    """
+    Findet die präzise X-Position eines Meilensteins auf der numerischen X-Achse.
+    Fällt der Meilenstein in ein Übergangsjahr, wird er genau in die Mitte des Jahres
+    (also in die Lücke zwischen den beiden geteilten Balken) auf float(Jahr) platziert.
+    """
+    jahr_int = int(m_jahr)
+    segments = df[df["Jahr"] == jahr_int]
+    if len(segments) > 1:
+        return float(jahr_int)
+    return m_jahr
+
 def create_trend_chart(df, meilensteine, show_tax_rate=False):
     """
     Erstellt ein gestapeltes Balkendiagramm für das Brutto-Einkommen.
@@ -91,32 +103,87 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
     """
     fig = make_subplots(specs=[[{"secondary_y": True}]])
     
+    is_categorical = "Label" in df.columns
+    bar_offsets = None
+    if is_categorical:
+        # Berechne optimierte numerische X-Koordinaten und Breiten für die Balken
+        x_coords = []
+        bar_widths = []
+        i = 0
+        n = len(df)
+        while i < n:
+            row = df.iloc[i]
+            jahr = row["Jahr"]
+            segments = df[df["Jahr"] == jahr]
+            num_segments = len(segments)
+            
+            if num_segments == 1:
+                x_coords.append(float(jahr))
+                bar_widths.append(0.7)
+                i += 1
+            elif num_segments == 2:
+                # Erste Hälfte nach links (-0.2), zweite nach rechts (+0.2)
+                # Breite jeweils 0.35, ergibt perfekten 0.05 Spalt in der Mitte
+                x_coords.append(float(jahr) - 0.20)
+                bar_widths.append(0.35)
+                x_coords.append(float(jahr) + 0.20)
+                bar_widths.append(0.35)
+                i += 2
+            else:
+                for s_idx in range(num_segments):
+                    offset = -0.2 + (s_idx / (num_segments - 1)) * 0.4 if num_segments > 1 else 0
+                    x_coords.append(float(jahr) + offset)
+                    bar_widths.append(0.7 / num_segments)
+                i += num_segments
+        
+        x_vals = x_coords
+    else:
+        x_vals = df.get("Jahr_Float", df["Jahr"])
+        bar_widths = df.get("bar_width", 0.8)
+    
     # 1. Gestapelte Balken für Einkommensquellen
-    exclude_cols = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder", "Gesetzliche Rente (Potenzial)"]
+    exclude_cols = ["Jahr", "Jahr_Float", "bar_width", "start_t", "end_t", "Label", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder", "Gesetzliche Rente (Potenzial)"]
     income_cols = [c for c in df.columns if c not in exclude_cols and not c.startswith("EXP_") and not c.startswith("ASSET_VAL_") and not c.startswith("_debug")]
     
     for i, col in enumerate(income_cols):
+        bar_args = dict(
+            x=x_vals, y=df[col], name=col,
+            width=bar_widths,
+            marker=dict(color=_get_color_by_name(col, i), line=dict(width=0)),
+            hovertemplate="%{y:,.0f} €"
+        )
+        if bar_offsets is not None:
+            bar_args["offset"] = bar_offsets
         fig.add_trace(
-            go.Bar(
-                x=df["Jahr"], y=df[col], name=col, 
-                marker=dict(color=_get_color_by_name(col, i), line=dict(width=0))
-            ),
+            go.Bar(**bar_args),
             secondary_y=False
         )
         
     # 2. Linie für Bedarf & Netto
     fig.add_trace(
-        go.Scatter(x=df["Jahr"], y=df["Bedarf"], name="Bedarf (Ausgaben)", line=dict(color='#CB4335', width=3)),
+        go.Scatter(
+            x=x_vals, y=df["Bedarf"], name="Bedarf (Ausgaben)",
+            line=dict(color='#CB4335', width=3),
+            hovertemplate="%{y:,.0f} €"
+        ),
         secondary_y=False
     )
     fig.add_trace(
-        go.Scatter(x=df["Jahr"], y=df["Netto-Einkommen"], name="Netto-Einkommen", line=dict(color='#212F3D', width=3, dash='dot')),
+        go.Scatter(
+            x=x_vals, y=df["Netto-Einkommen"], name="Netto-Einkommen",
+            line=dict(color='#212F3D', width=3, dash='dot'),
+            hovertemplate="%{y:,.0f} €"
+        ),
         secondary_y=False
     )
     
     if show_tax_rate:
         fig.add_trace(
-            go.Scatter(x=df["Jahr"], y=df["Steuersatz"], name="Steuersatz (%)", line=dict(color='#7F8C8D', width=2, dash='dot')),
+            go.Scatter(
+                x=x_vals, y=df["Steuersatz"], name="Steuersatz (%)",
+                line=dict(color='#7F8C8D', width=2, dash='dot'),
+                hovertemplate="%{y:.1f} %"
+            ),
             secondary_y=True
         )
     
@@ -136,21 +203,28 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
         # Y-Position leicht unter der X-Achse (gestapelt)
         y_pos = -(offset_idx * 800) # Vergrößerter Offset (800 statt 600)
         
+        # Finde X-Position auf kategorialer oder numerischer Achse
+        if is_categorical:
+            m_pos = get_milestone_visual_pos(df, m["jahr"])
+        else:
+            m_pos = m["jahr"]
+        
         # Punkt für Legende & Position im Chart
         fig.add_trace(
             go.Scatter(
-                x=[m["jahr"]], y=[y_pos], 
+                x=[m_pos], y=[y_pos], 
                 name=f"{m['label']} ({date_label})",
                 mode='markers',
                 marker=dict(symbol=sym, size=12, color=m["color"], line=dict(width=1, color="white")),
                 showlegend=True,
-                cliponaxis=False # Wichtig für Position außerhalb der Achse
+                cliponaxis=False, # Wichtig für Position außerhalb der Achse
+                hoverinfo="skip"  # Nicht im vereinheitlichten Tooltip anzeigen
             ),
             secondary_y=False
         )
         
         # Die vertikale Linie
-        fig.add_vline(x=m["jahr"], line_width=2, line_dash="dash", line_color=m["color"])
+        fig.add_vline(x=m_pos, line_width=2, line_dash="dash", line_color=m["color"])
 
     # Layout-Optimierung
     fig.update_layout(
@@ -160,8 +234,24 @@ def create_trend_chart(df, meilensteine, show_tax_rate=False):
         bargap=0.15,
         margin=dict(t=50),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        separators=",."
+        separators=",.",
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor="#E5E7E9",
+            font_size=13,
+            font_family="Arial",
+            namelength=-1  # Verhindert jegliche Kürzung der Namen im Tooltip
+        )
     )
+    
+    if is_categorical:
+        fig.update_xaxes(
+            type='linear',
+            tickmode='array',
+            tickvals=x_vals,
+            ticktext=df["Label"],
+            tickangle=-45
+        )
     
     # Y-Achse etwas nach unten erweitern für Symbole
     y_min = -2500 if meilensteine else 0
@@ -176,6 +266,34 @@ def create_wealth_chart(df):
     Erstellt ein Stacked Area Chart für die Vermögensentwicklung einzelner Assets.
     """
     fig = go.Figure()
+    
+    is_categorical = "Label" in df.columns
+    if is_categorical:
+        # Berechne optimierte numerische X-Koordinaten
+        x_coords = []
+        i = 0
+        n = len(df)
+        while i < n:
+            row = df.iloc[i]
+            jahr = row["Jahr"]
+            segments = df[df["Jahr"] == jahr]
+            num_segments = len(segments)
+            
+            if num_segments == 1:
+                x_coords.append(float(jahr))
+                i += 1
+            elif num_segments == 2:
+                x_coords.append(float(jahr) - 0.20)
+                x_coords.append(float(jahr) + 0.20)
+                i += 2
+            else:
+                for s_idx in range(num_segments):
+                    offset = -0.2 + (s_idx / (num_segments - 1)) * 0.4 if num_segments > 1 else 0
+                    x_coords.append(float(jahr) + offset)
+                i += num_segments
+        x_vals = x_coords
+    else:
+        x_vals = df.get("Jahr_Float", df["Jahr"])
     
     # Finde alle Asset-Spalten
     asset_cols = [c for c in df.columns if c.startswith("ASSET_VAL_")]
@@ -192,13 +310,14 @@ def create_wealth_chart(df):
         
         fig.add_trace(
             go.Scatter(
-                x=df["Jahr"], 
+                x=x_vals, 
                 y=df[col], 
                 name=name,
                 mode='lines',
                 stackgroup='one', # Macht es zum gestapelten Flächendiagramm
                 line=dict(width=0.5, color=color),
-                fillcolor=color
+                fillcolor=color,
+                hovertemplate="%{y:,.0f} €"
             )
         )
     
@@ -213,8 +332,24 @@ def create_wealth_chart(df):
         yaxis_title="Vermögen in Euro",
         xaxis_title="Jahr",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        separators=",."
+        separators=",.",
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor="#E5E7E9",
+            font_size=13,
+            font_family="Arial",
+            namelength=-1
+        )
     )
+    
+    if is_categorical:
+        fig.update_xaxes(
+            type='linear',
+            tickmode='array',
+            tickvals=x_vals,
+            ticktext=df["Label"],
+            tickangle=-45
+        )
     
     return fig
 

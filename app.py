@@ -1,4 +1,4 @@
-# Rente-O-Mat PRO - Build 0057 (Stable)
+# Rente-O-Mat PRO
 import streamlit as st
 import warnings
 # Unterdrücke alle Kaleido-bezogenen DeprecationWarnings
@@ -178,15 +178,48 @@ with tab1:
         st.subheader("🎯 2. Simulations-Analyse")
         
         # Zeitstrahl-Navigation direkt hier
-        if "betrachtungsjahr" not in st.session_state:
-            st.session_state.betrachtungsjahr = p['aktuelles_jahr']
+        slider_options = df_timeline["Label"].tolist()
+        if "betrachtungslabel" not in st.session_state or str(st.session_state.betrachtungslabel) not in slider_options:
+            st.session_state.betrachtungslabel = slider_options[0]
+        else:
+            st.session_state.betrachtungslabel = str(st.session_state.betrachtungslabel)
             
-        # Slider für das Jahr
-        b_jahr = st.slider("Simulation für Jahr:", p['aktuelles_jahr'], p['geburtsjahr'] + 95, st.session_state.betrachtungsjahr, key="b_jahr_slider")
-        st.session_state.betrachtungsjahr = b_jahr
+        label_formatting = {}
+        for idx, row in df_timeline.iterrows():
+            lbl = row["Label"]
+            phase = row["Phase"]
+            
+            # Ordne Phase das passende Symbol & Namen zu
+            if phase == "Aktiv":
+                emoji = "📍"
+                phase_lbl = "Aktiv"
+            elif phase == "ATZ(A)":
+                emoji = "🔵"
+                phase_lbl = "ATZ(A)"
+            elif phase == "ATZ(P)":
+                emoji = "🟡"
+                phase_lbl = "ATZ(P)"
+            elif phase == "Rente":
+                emoji = "🟢"
+                phase_lbl = "Rente"
+            else:
+                emoji = "⚪"
+                phase_lbl = phase
+                
+            label_formatting[lbl] = f"{lbl} ({emoji} {phase_lbl})"
+
+        # Slider für den Zeitraum (Unterstützt geteilte Übergangsjahre wie 2027 (01))
+        selected_label = st.select_slider(
+            "Simulation für Zeitraum:",
+            options=slider_options,
+            value=st.session_state.betrachtungslabel,
+            format_func=lambda x: label_formatting.get(x, x),
+            key="b_label_slider"
+        )
+        st.session_state.betrachtungslabel = selected_label
         
-        # Daten für das gewählte Jahr holen
-        res = df_timeline[df_timeline["Jahr"] == b_jahr].iloc[0].to_dict()
+        # Daten für den gewählten Zeitraum holen
+        res = df_timeline[df_timeline["Label"] == selected_label].iloc[0].to_dict()
         
         # Phasen-Anzeige & Meilensteine
         c1, c2 = st.columns([0.4, 0.6])
@@ -233,7 +266,8 @@ with tab1:
         ra = res.get('Rentenabschlag', 0)
         
         for e in p['einnahmen']:
-            if res['Jahr'] >= e.get("start", 0) and res['Jahr'] <= e.get("ende", 9999):
+            jahr_float = res.get('Jahr_Float', float(res['Jahr']))
+            if jahr_float >= e.get("start", 0) and jahr_float <= e.get("ende", 9999):
                 val = res.get(e["name"], 0.0)
                 if val > 0 and e["typ"] != "Gesetzlich":
                     add_r(e["name"], "Brutto", val)
@@ -245,8 +279,9 @@ with tab1:
         
         # GRV: Aggregierter Potenzial-Flow
         if pot > 0:
+            jahr_float = res.get('Jahr_Float', float(res['Jahr']))
             grv_names = [e["name"] for e in p['einnahmen'] if e['typ'] == 'Gesetzlich'
-                         and res['Jahr'] >= e.get('start', 0) and res['Jahr'] <= e.get('ende', 9999)
+                         and jahr_float >= e.get('start', 0) and jahr_float <= e.get('ende', 9999)
                          and res.get(e['name'], 0) > 0]
             label = grv_names[0] if grv_names else "Gesetzliche Rente"
             
@@ -289,8 +324,8 @@ with tab1:
             val = res.get(f"EXP_{k}", 0.0)
             if val > 0: add_r("Verfügbares Budget", k, val)
             
-        st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {b_jahr}", p['show_values']), width='stretch')
-        with st.expander(f"Details zum Jahr {b_jahr} anzeigen"):
+        st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {selected_label}", p['show_values']), width='stretch')
+        with st.expander(f"Details zum Zeitraum {selected_label} anzeigen"):
             # Relevante Zeilen aus 'res' extrahieren
             sim_data = []
             for k, v in res.items():
@@ -301,7 +336,7 @@ with tab1:
             
             import pandas as pd
             df_sim_year = pd.DataFrame(sim_data)
-            st_display_table(df_sim_year, f"Simulation_{b_jahr}", money_cols=["Wert"])
+            st_display_table(df_sim_year, f"Simulation_{selected_label.replace(' ', '_')}", money_cols=["Wert"])
 
 # --- TAB 2: TREND ---
 with tab2:

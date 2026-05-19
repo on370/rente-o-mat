@@ -48,6 +48,22 @@ def import_settings(json_file):
                 if json_key in data:
                     st.session_state[ss_key] = data[json_key]
             
+            # Spezialfall: Rentenbeginn (Dezimaljahr) in Jahr und Monat aufteilen
+            if "rentenbeginn" in data:
+                rb = data["rentenbeginn"]
+                rb_jahr = int(rb)
+                rb_monat = int(round((rb - rb_jahr) * 12)) + 1
+                if rb_monat > 12:
+                    rb_jahr += 1
+                    rb_monat -= 12
+                st.session_state["rentenbeginn_jahr_input"] = rb_jahr
+                st.session_state["rentenbeginn_monat_input"] = rb_monat
+                st.session_state["prev_rentenbeginn"] = rb
+                
+            # Spezialfall: prev_geburtsjahr setzen, um automatisches Zurücksetzen zu verhindern
+            if "geburtsjahr" in data:
+                st.session_state["prev_geburtsjahr"] = data["geburtsjahr"]
+            
             # 3. Haushaltsbuch-Einträge
             if "ausgaben_input" in data:
                 for kat, val in data["ausgaben_input"].items():

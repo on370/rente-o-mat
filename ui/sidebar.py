@@ -17,10 +17,22 @@ def render_sidebar():
     aktuelles_jahr = datetime.now().year
 
     # --- 0. INITIALISIERUNG ---
-    # Regelaltersgrenze als Basis für Defaults berechnen
-    regel_jahre, rag_monate = berechne_regelaltersgrenze(st.session_state.get("geburtsjahr_key", 1965))
-    def_beginn_jahr = st.session_state.get("geburtsjahr_key", 1965) + regel_jahre
+    if "uploader_id" not in st.session_state:
+        st.session_state.uploader_id = 0
+    geburtsjahr = st.session_state.get("geburtsjahr_key", 1965)
+    
+    # Check if birth year changed, to update default retirement age
+    if "prev_geburtsjahr" not in st.session_state:
+        st.session_state["prev_geburtsjahr"] = geburtsjahr
+        
+    regel_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
+    def_beginn_jahr = geburtsjahr + regel_jahre
     def_beginn_monat = rag_monate + 1
+    
+    if geburtsjahr != st.session_state["prev_geburtsjahr"]:
+        st.session_state["rentenbeginn_jahr_input"] = def_beginn_jahr
+        st.session_state["rentenbeginn_monat_input"] = def_beginn_monat
+        st.session_state["prev_geburtsjahr"] = geburtsjahr
 
     defaults = {
         "nutzer_name_key": "Max Mustermann",
@@ -46,6 +58,11 @@ def render_sidebar():
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+    r_jahr = st.session_state.get("rentenbeginn_jahr_input", def_beginn_jahr)
+    r_monat = st.session_state.get("rentenbeginn_monat_input", def_beginn_monat)
+    rentenbeginn = r_jahr + (r_monat - 1) / 12
+    st.session_state["rentenbeginn_input"] = rentenbeginn
 
     if "einnahmen" not in st.session_state:
         st.session_state.einnahmen = [
@@ -78,10 +95,13 @@ def render_sidebar():
 
     # --- 1. IMPORT-LOGIK (Muss vor dem Rendern der Widgets laufen) ---
     if st.session_state.get("do_import") and st.session_state.get("import_file"):
-        import_settings(st.session_state.import_file)
+        success = import_settings(st.session_state.import_file)
         # Flags zurücksetzen
         st.session_state.do_import = False
         st.session_state.import_file = None
+        if success:
+            st.session_state.uploader_id += 1
+            st.toast("✅ Import erfolgreich!", icon="🎉")
         st.session_state.global_rerun = True
 
     with st.sidebar:
@@ -180,7 +200,7 @@ def render_sidebar():
                 exp_fn_default = f"ROM_Profil_{nutzer_name.replace(' ', '_')}"
                 exp_fn = st.text_input("Dateiname (.json)", value=exp_fn_default)
                 st.download_button(
-                    label="Download starten",
+                    label="Export",
                     data=json_str,
                     file_name=f"{exp_fn}.json",
                     mime="application/json",
@@ -190,7 +210,7 @@ def render_sidebar():
             uploaded_file = st.file_uploader(
                 "Import",
                 type=["json"],
-                key="json_uploader_widget",
+                key=f"json_uploader_widget_{st.session_state.uploader_id}",
                 help=DATENSCHUTZ_INFO,
             )
             if uploaded_file and st.button("Importieren", width="stretch"):
@@ -221,6 +241,7 @@ def render_sidebar():
 
             # Rentenbeginn als Dezimaljahr für die Engine
             rentenbeginn = r_jahr + (r_monat - 1) / 12
+            st.session_state["rentenbeginn_input"] = rentenbeginn
 
             if "prev_rentenbeginn" not in st.session_state:
                 st.session_state.prev_rentenbeginn = rentenbeginn

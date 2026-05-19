@@ -36,14 +36,14 @@ def get_phase(jahr, atz_simulieren, atz_start, rentenbeginn):
 
 
 def _dynamisiere_betrag(basisbetrag, startjahr, aktuelles_jahr, steigerung_pct):
-    """Erhöht einen Betrag jährlich um einen Prozentsatz ab dem Startjahr."""
-    if aktuelles_jahr <= startjahr or steigerung_pct == 0:
+    """Erhöht einen Betrag jährlich um einen Prozentsatz ab dem Startjahr. (Harte Jahressprünge)"""
+    jahre = int(aktuelles_jahr) - int(startjahr)
+    if jahre <= 0 or steigerung_pct == 0:
         return basisbetrag
-    jahre = aktuelles_jahr - startjahr
     return basisbetrag * (1 + steigerung_pct / 100) ** jahre
 
 
-def _calculate_grv_components(jahr, e, params):
+def _calculate_grv_components(jahr_float, e, params):
     """
     Zentrale Funktion zur Berechnung aller Komponenten einer gesetzlichen Rente.
     Berücksichtigt EP-Modus vs. Euro-Modus, Beitragsverlust und Abschläge.
@@ -102,13 +102,13 @@ def _calculate_grv_components(jahr, e, params):
         
     # Dynamisierung (Rentenwert-Steigerung ab Rentenbeginn)
     start_der_rente = e.get("start", rentenbeginn)
-    val_dyn = _dynamisiere_betrag(val_base, start_der_rente, jahr, rentenanpassung_rate)
-    bv_dyn = _dynamisiere_betrag(bv_jahr, start_der_rente, jahr, rentenanpassung_rate)
+    val_dyn = _dynamisiere_betrag(val_base, start_der_rente, jahr_float, rentenanpassung_rate)
+    bv_dyn = _dynamisiere_betrag(bv_jahr, start_der_rente, jahr_float, rentenanpassung_rate)
     
     # Gesetzlicher Abschlag (0,3% pro Monat)
     abs_pct = min(14.4, monate_frueher * 0.3)
     abs_euro = val_dyn * (abs_pct / 100)
-    pot_dyn = _dynamisiere_betrag(val_at_rag, start_der_rente, jahr, rentenanpassung_rate)
+    pot_dyn = _dynamisiere_betrag(val_at_rag, start_der_rente, jahr_float, rentenanpassung_rate)
     
     return {
         "beitragsverlust": bv_dyn,
@@ -118,7 +118,7 @@ def _calculate_grv_components(jahr, e, params):
     }
 
 
-def calculate_financials_for_year(jahr, params, assets_state=None):
+def calculate_financials_for_year(jahr_float, params, assets_state=None):
     """
     Zentrale Berechnungspipeline für ein spezifisches Jahr.
     1. Einnahmen (Aktiv, ATZ oder Rente)
@@ -145,7 +145,8 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
     rentenanpassung_rate = params.get('rentenanpassung_rate', 2.0)
     bav_anpassung_rate = params.get('bav_anpassung_rate', 1.0)
     
-    phase = get_phase(jahr, params.get('atz_simulieren', False), params.get('atz_start', 9999), rentenbeginn)
+    jahr = int(jahr_float)
+    phase = get_phase(jahr_float, params.get('atz_simulieren', False), params.get('atz_start', 9999), rentenbeginn)
 
     # --- INITIALISIERUNG ---
     b_g = 0.0  # Brutto gesamt (monatlich)
@@ -213,9 +214,9 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
         kapitalertraege_jahressumme = 0.0
 
         for e in params.get('einnahmen', []):
-            if jahr >= e.get("start", 0) and jahr <= e.get("ende", 9999):
+            if jahr_float >= e.get("start", 0) and jahr_float <= e.get("ende", 9999):
                 if e["typ"] == "Gesetzlich":
-                    grv = _calculate_grv_components(jahr, e, params)
+                    grv = _calculate_grv_components(jahr_float, e, params)
                     val = grv["basis_brutto"]
                     rentenabschlag_gesamt += grv["abschlag_betrag"]
                     beitragsverlust_gesamt += grv["beitragsverlust"]
@@ -224,9 +225,9 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
                 elif e["typ"] == "bAV":
                     val = _dynamisiere_betrag(e.get("betrag", 0.0), e.get("start", jahr), jahr, bav_anpassung_rate)
                 elif e["typ"] == "bAV (Einmalzahlung)":
-                    if jahr >= e["start"] and jahr < e["start"] + 10:
+                    if jahr_float >= e["start"] and jahr_float < e["start"] + 10:
                         sv_einnahmen.append({"name": e["name"] + " (SV)", "betrag": e["betrag"] / 120, "typ": "bAV"})
-                    if jahr == e["start"]: einmalzahlungen_bav.append(e["betrag"])
+                    if int(jahr_float) == int(e["start"]): einmalzahlungen_bav.append(e["betrag"])
                     continue
                 elif e["typ"] == "Entnahmeplan (Vermögen)":
                     found = any(a_s["name"] == e["name"] for a_s in (assets_state or []))
@@ -299,10 +300,10 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
                 st = berechne_abgeltungsteuer(st_pfl, kirchensteuer_satz, sparerpauschbetrag=0)
             
             a_s["kapital"] += gewinn - st
-            if cfg.get("entnahme_aktiv") and jahr >= cfg.get("entnahme_start", 0) and jahr <= cfg.get("entnahme_ende", 9999):
+            if cfg.get("entnahme_aktiv") and jahr_float >= cfg.get("entnahme_start", 0) and jahr_float <= cfg.get("entnahme_ende", 9999):
                 # Unterscheidung: Fixer Betrag vs. Kapitalverzehr (Annuität)
                 if cfg.get("entnahme_modus") == "verzehr":
-                    rem_years = max(1, int(cfg.get("entnahme_ende", jahr) - jahr + 1))
+                    rem_years = max(1, int(cfg.get("entnahme_ende", jahr_float) - jahr_float + 1))
                     if rem_years > 0:
                         r = cfg.get("rendite_pa", 0.0) / 100
                         if r > 0:
@@ -332,15 +333,15 @@ def calculate_financials_for_year(jahr, params, assets_state=None):
     ausgaben_details = {}
     for k in params.get('ausgaben_kategorien', []):
         bas = params.get('ausgaben_input', {}).get(k, 0.0)
-        val = _dynamisiere_betrag(bas, aktuelles_jahr, jahr, inflation_rate)
+        val = _dynamisiere_betrag(bas, aktuelles_jahr, jahr_float, inflation_rate)
         if phase == "Rente": val *= (params.get('anpassungsfaktor_input', {}).get(k, 100) / 100)
         ausgaben += val
         ausgaben_details[f"EXP_{k}"] = val
 
     for ba in params.get('befristete_ausgaben', []):
-        if jahr >= ba.get('start', 0) and jahr <= ba.get('ende', 9999):
+        if jahr_float >= ba.get('start', 0) and jahr_float <= ba.get('ende', 9999):
             b = ba['betrag_mtl']
-            if ba.get('inflationsgebunden', False): b = _dynamisiere_betrag(b, aktuelles_jahr, jahr, inflation_rate)
+            if ba.get('inflationsgebunden', False): b = _dynamisiere_betrag(b, aktuelles_jahr, jahr_float, inflation_rate)
             kat = ba.get('kategorie', ba['name'])
             ausgaben_details[f"EXP_{kat}"] = ausgaben_details.get(f"EXP_{kat}", 0) + b
             ausgaben += b
@@ -379,45 +380,101 @@ def generate_trend_data(jahre, params):
     assets_state.append(liquiditaet)
 
     data = []
+    
+    # Bestimme alle Übergangspunkte (als float)
+    transitions_global = []
+    atz_sim = params.get('atz_simulieren', False)
+    atz_start = float(params.get('atz_start', 9999))
+    rentenbeginn = float(params.get('rentenbeginn', 2030))
+    if atz_sim:
+        if atz_start % 1 != 0: transitions_global.append(atz_start)
+        dauer = rentenbeginn - atz_start
+        mitte = atz_start + (dauer / 2)
+        if mitte % 1 != 0: transitions_global.append(mitte)
+    if rentenbeginn % 1 != 0: transitions_global.append(rentenbeginn)
+
     for j in jahre:
-        # 1. Jahr berechnen
-        res = calculate_financials_for_year(j, params, assets_state)
+        # Finde Übergänge in DIESEM Jahr
+        transitions = [t for t in transitions_global if j < t < j + 1]
+        transitions = sorted(list(set(transitions)))
         
-        # 2. Überschuss/Defizit des Jahres behandeln
-        # Korrektur: Wir reinvestieren nur den "echten" Überschuss, der NICHT aus Asset-Entnahmen stammt.
-        # Sonst entsteht ein Loop, wenn ein Asset mit Entnahmeplan gleichzeitig Reinvest-Ziel ist.
-        entnahmen_aus_assets = sum(v for k, v in res.items() if k.startswith("Entnahme: "))
-        jahres_saldo = (res["Überschuss/Defizit"] - entnahmen_aus_assets) * 12
-        
-        if jahres_saldo > 0:
-            # Wohin mit dem Geld?
-            diff_to_limit = max(0, liq_limit - liquiditaet["kapital"])
-            if diff_to_limit > 0:
-                flow_to_liq = min(jahres_saldo, diff_to_limit)
-                liquiditaet["kapital"] += flow_to_liq
-                jahres_saldo -= flow_to_liq
-            
-            if jahres_saldo > 0 and reinvest_target_name != "— Keine (nur Cash-Reserven) —":
-                # In Ziel-Asset investieren
-                target_asset = next((a for a in assets_state if a["name"] == reinvest_target_name), None)
-                if target_asset:
-                    target_asset["kapital"] += jahres_saldo
-                    jahres_saldo = 0
-            
-            # Falls immer noch Rest (weil kein Target gewählt oder Asset nicht gefunden)
-            if jahres_saldo > 0:
-                liquiditaet["kapital"] += jahres_saldo
+        if not transitions:
+            res = calculate_financials_for_year(j + 0.5, params, assets_state)
+            res["Jahr_Float"] = float(j)
+            res["start_t"] = float(j)
+            res["end_t"] = float(j) + 1.0
+            res["Label"] = str(j)
+            res["weight"] = 1.0
+            periods = [res]
         else:
-            # Defizit: Erst aus Liquidität decken (kann negativ gehen)
-            # Hier nutzen wir den vollen Saldo (inkl. Entnahmen), da Entnahmen ja dazu da sind, Defizite zu decken.
-            liquiditaet["kapital"] += res["Überschuss/Defizit"] * 12 
-        
-        # 3. Asset-Werte in 'res' aktualisieren, damit das Chart den Stand NACH Reinvestition zeigt
-        for a_s in assets_state:
-            res[f"ASSET_VAL_{a_s['name']}"] = a_s["kapital"]
+            periods = []
+            last_t = float(j)
+            segments = transitions + [j + 1.0]
+            for tr in segments:
+                weight = tr - last_t
+                if weight > 0:
+                    mid_t = last_t + weight / 2.0
+                    res = calculate_financials_for_year(mid_t, params, assets_state)
+                    res["Jahr_Float"] = mid_t
+                    res["start_t"] = last_t
+                    res["end_t"] = tr
+                    
+                    # Berechne den genauen Monatsbereich für das Label (z.B. "2027 (01-02)")
+                    start_month = int(round((last_t - j) * 12)) + 1
+                    end_month = int(round((tr - j) * 12))
+                    if start_month < 1: start_month = 1
+                    if end_month > 12: end_month = 12
+                    if start_month > 12: start_month = 12
+                    if end_month < 1: end_month = 1
+                    
+                    if start_month == end_month:
+                        res["Label"] = f"{j} ({start_month:02d})"
+                    else:
+                        res["Label"] = f"{j} ({start_month:02d}-{end_month:02d})"
+                        
+                    res["weight"] = weight
+                    periods.append(res)
+                last_t = tr
+                
+        for res in periods:
+            weight = res.pop("weight")
             
-        data.append(res)
-        
+            # 2. Überschuss/Defizit des Jahres behandeln
+            # Korrektur: Wir reinvestieren nur den "echten" Überschuss, der NICHT aus Asset-Entnahmen stammt.
+            # Sonst entsteht ein Loop, wenn ein Asset mit Entnahmeplan gleichzeitig Reinvest-Ziel ist.
+            entnahmen_aus_assets = sum(v for k, v in res.items() if k.startswith("Entnahme: "))
+            jahres_saldo = (res["Überschuss/Defizit"] - entnahmen_aus_assets) * 12 * weight
+            
+            if jahres_saldo > 0:
+                # Wohin mit dem Geld?
+                diff_to_limit = max(0, liq_limit - liquiditaet["kapital"])
+                if diff_to_limit > 0:
+                    flow_to_liq = min(jahres_saldo, diff_to_limit)
+                    liquiditaet["kapital"] += flow_to_liq
+                    jahres_saldo -= flow_to_liq
+                
+                if jahres_saldo > 0 and reinvest_target_name != "— Keine (nur Cash-Reserven) —":
+                    # In Ziel-Asset investieren
+                    target_asset = next((a for a in assets_state if a["name"] == reinvest_target_name), None)
+                    if target_asset:
+                        target_asset["kapital"] += jahres_saldo
+                        jahres_saldo = 0
+                
+                # Falls immer noch Rest (weil kein Target gewählt oder Asset nicht gefunden)
+                if jahres_saldo > 0:
+                    liquiditaet["kapital"] += jahres_saldo
+            else:
+                # Defizit: Erst aus Liquidität decken (kann negativ gehen)
+                # Hier nutzen wir den vollen Saldo (inkl. Entnahmen), da Entnahmen ja dazu da sind, Defizite zu decken.
+                liquiditaet["kapital"] += res["Überschuss/Defizit"] * 12 * weight 
+            
+            # 3. Asset-Werte in 'res' aktualisieren, damit das Chart den Stand NACH Reinvestition zeigt
+            for a_s in assets_state:
+                res[f"ASSET_VAL_{a_s['name']}"] = a_s["kapital"]
+                
+            res["bar_width"] = weight * 0.9
+            data.append(res)
+            
     return pd.DataFrame(data).fillna(0)
 
 

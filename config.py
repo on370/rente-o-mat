@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "0084" # Global Rerun to fix Haushaltsbuch Reset Bug
+BUILD_ID = "009C" # Correct HEX progression, accounting for forgotten increments
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

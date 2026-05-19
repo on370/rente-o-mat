@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "0076" # Warnings suppressed & PDF Export polished
+BUILD_ID = "0081" # Fixed kaleido sustainability documentation
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

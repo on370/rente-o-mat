@@ -175,14 +175,17 @@ def render_sidebar():
             }
             json_str = export_settings(export_params)
 
-            st.markdown("💾 **Export / Import**", help=DATENSCHUTZ_INFO)
-            st.download_button(
-                label="Einstellungen exportieren",
-                data=json_str,
-                file_name=f"R-O-M_{nutzer_name.replace(' ', '_')}.json",
-                mime="application/json",
-                width="stretch",
-            )
+            st.markdown("💾 **Datenmanagement**", help=DATENSCHUTZ_INFO)
+            with st.popover("⚙️ Einstellungen exportieren", use_container_width=True):
+                exp_fn_default = f"ROM_Profil_{nutzer_name.replace(' ', '_')}"
+                exp_fn = st.text_input("Dateiname (.json)", value=exp_fn_default)
+                st.download_button(
+                    label="Download starten",
+                    data=json_str,
+                    file_name=f"{exp_fn}.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
 
             uploaded_file = st.file_uploader(
                 "Import",

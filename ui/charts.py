@@ -16,7 +16,7 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
         display_labels.append(f"{label} ({v:.0f}€)" if show_vals else label)
         
         low_label = label.lower()
-        if "überschuss" in low_label:
+        if "überschuss" in low_label or "ueberschuss" in low_label:
             node_colors.append("#28B463") # Grün
         elif "unterdeckung" in low_label or "abschlag" in low_label or "beitragsverlust" in low_label:
             node_colors.append("#CB4335") # Kräftiges Rot

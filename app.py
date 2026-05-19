@@ -1,9 +1,8 @@
 # Rente-O-Mat PRO - Build 0057 (Stable)
 import streamlit as st
 import warnings
-# Unterdrücke Kaleido DeprecationWarnings
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="kaleido")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="plotly")
+# Unterdrücke alle Kaleido-bezogenen DeprecationWarnings
+warnings.filterwarnings("ignore", message=".*Kaleido versions less than 1.0.0.*")
 from ui.sidebar import render_sidebar
 from ui.charts import create_sankey, create_trend_chart, create_wealth_chart, create_break_even_chart
 from logic.engine import calculate_financials_for_year, generate_trend_data, calculate_break_even_data
@@ -96,11 +95,11 @@ def capture_charts_for_pdf(p, df_timeline):
         a_sq_sum = sum(p['ausgaben_input'].values())
         d_sq = p['aktuelles_netto'] - a_sq_sum
         add_sq("Aktuelles Netto", "Haushalts-Budget", p['aktuelles_netto'])
-        if d_sq > 0: add_sq("Haushalts-Budget", "Ueberschuss", d_sq)
+        if d_sq > 0: add_sq("Haushalts-Budget", "Überschuss", d_sq)
         elif d_sq < 0: add_sq("Unterdeckung", "Haushalts-Budget", abs(d_sq))
         for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
         
-        fig_sq = create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", False)
+        fig_sq = create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", True)
         charts["sankey_aktiv"] = fig_sq.to_image(format="png", width=1000, height=500)
         
         # 2. Sankey Rente (Erstes Rentenjahr)
@@ -121,10 +120,10 @@ def capture_charts_for_pdf(p, df_timeline):
             add_r("Brutto-Einkommen", "Netto-Verfügbar", res['Netto-Einkommen'])
             add_r("Netto-Verfügbar", "Bedarf (Lebenshaltung)", res['Bedarf'])
             ue = res['Überschuss/Defizit']
-            if ue > 0: add_r("Netto-Verfügbar", "Ueberschuss", ue)
+            if ue > 0: add_r("Netto-Verfügbar", "Überschuss", ue)
             elif ue < 0: add_r("Defizit", "Netto-Verfügbar", abs(ue))
             
-            fig_r = create_sankey(l_r, s_r, t_r, v_r, f"Cashflow im 1. Rentenjahr ({int(res['Jahr'])})", False)
+            fig_r = create_sankey(l_r, s_r, t_r, v_r, f"Cashflow im 1. Rentenjahr ({int(res['Jahr'])})", True)
             charts["sankey_rente"] = fig_r.to_image(format="png", width=1000, height=500)
             
         # 3. Trends
@@ -573,28 +572,25 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
     # PDF Export Button
     col_pdf1, col_pdf2, col_pdf3 = st.columns([1, 2, 1])
     with col_pdf2:
-        try:
-            from logic.pdf_export import create_briefing_pdf
-            # Dateiname-Vorschlag bearbeitbar machen
-            default_fn = f"RenteOMat_Briefing_{p.get('nutzer_name', 'Nutzer')}"
-            fn_input = st.text_input("Vorschlag Dateiname", value=default_fn)
-            
-            # Bilder erfassen
-            with st.spinner("Erzeuge Diagramme für PDF..."):
-                chart_imgs = capture_charts_for_pdf(p, df_timeline)
-            
-            pdf_bytes = create_briefing_pdf(p, df_timeline, chart_images=chart_imgs)
-            st.download_button(
-                label="📄 Komplettes Briefing als PDF herunterladen",
-                data=pdf_bytes,
-                file_name=f"{fn_input}.pdf",
-                mime="application/pdf",
-                type="primary",
-                use_container_width=True
-            )
-        except Exception as e:
-            st.error(f"Fehler bei der PDF-Generierung: {e}")
-            st.info("Bitte stelle sicher, dass 'kaleido' und 'fpdf2' installiert sind.")
+            with st.popover("📄 Briefing exportieren (PDF)", use_container_width=True):
+                # Dateiname-Vorschlag bearbeitbar machen
+                default_fn = f"RenteOMat_Briefing_{p.get('nutzer_name', 'Nutzer')}"
+                fn_input = st.text_input("Dateiname (.pdf)", value=default_fn)
+                
+                # Bilder erfassen
+                with st.spinner("Erzeuge Diagramme..."):
+                    chart_imgs = capture_charts_for_pdf(p, df_timeline)
+                
+                from logic.pdf_export import create_briefing_pdf
+                pdf_bytes = create_briefing_pdf(p, df_timeline, chart_images=chart_imgs)
+                st.download_button(
+                    label="Download starten",
+                    data=pdf_bytes,
+                    file_name=f"{fn_input}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
 
 # --- FOOTER & DISCLAIMER ---
 st.divider()

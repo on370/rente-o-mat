@@ -65,12 +65,32 @@ def import_settings(json_file):
                 st.session_state["prev_geburtsjahr"] = data["geburtsjahr"]
             
             # 3. Haushaltsbuch-Einträge
-            if "ausgaben_input" in data:
-                for kat, val in data["ausgaben_input"].items():
-                    st.session_state[f"c_{kat}"] = val
-            if "anpassungsfaktor_input" in data:
-                for kat, val in data["anpassungsfaktor_input"].items():
-                    st.session_state[f"a_{kat}"] = val
+            if "haushaltsbuch_kategorien" in data:
+                st.session_state.haushaltsbuch_kategorien = data["haushaltsbuch_kategorien"]
+                for kat in st.session_state.haushaltsbuch_kategorien:
+                    if not kat.get("is_group"):
+                        st.session_state[f"c_{kat['id']}"] = float(kat.get("betrag", 0.0))
+                        st.session_state[f"a_{kat['id']}"] = int(kat.get("rv_pct", 100))
+            else:
+                # Alt-Format Migration (v1)
+                st.session_state.haushaltsbuch_kategorien = []
+                if "ausgaben_input" in data:
+                    for kat, val in data["ausgaben_input"].items():
+                        st.session_state[f"c_{kat}"] = float(val)
+                        
+                        rv = 100
+                        if "anpassungsfaktor_input" in data and kat in data["anpassungsfaktor_input"]:
+                            rv = int(data["anpassungsfaktor_input"][kat])
+                        st.session_state[f"a_{kat}"] = rv
+                        
+                        st.session_state.haushaltsbuch_kategorien.append({
+                            "id": kat,
+                            "name": kat,
+                            "parent_id": None,
+                            "is_group": False,
+                            "betrag": float(val),
+                            "rv_pct": int(rv)
+                        })
 
             # 4. Befristete Ausgaben & Assets
             if "befristete_ausgaben" in data:

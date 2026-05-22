@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "009C" # Correct HEX progression, accounting for forgotten increments
+BUILD_ID = "009F" # Collapsible budget categories and compact gear popovers layout
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

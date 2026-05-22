@@ -92,12 +92,38 @@ def capture_charts_for_pdf(p, df_timeline):
                 if t not in sq_labels: sq_labels.append(t)
                 sq_sources.append(sq_labels.index(s)); sq_targets.append(sq_labels.index(t)); sq_values.append(v)
         
+        # Get category lookup for parents and names
+        id_to_name = {kat["id"]: kat["name"] for kat in p.get("haushaltsbuch_kategorien", [])}
+        id_to_parent = {kat["id"]: kat["parent_id"] for kat in p.get("haushaltsbuch_kategorien", [])}
+
         a_sq_sum = sum(p['ausgaben_input'].values())
         d_sq = p['aktuelles_netto'] - a_sq_sum
         add_sq("Aktuelles Netto", "Haushalts-Budget", p['aktuelles_netto'])
         if d_sq > 0: add_sq("Haushalts-Budget", "Überschuss", d_sq)
         elif d_sq < 0: add_sq("Unterdeckung", "Haushalts-Budget", abs(d_sq))
-        for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
+        
+        # Calculate group sums for status quo
+        group_sums = {}
+        for k, v in p['ausgaben_input'].items():
+            parent_id = id_to_parent.get(k)
+            if parent_id:
+                group_sums[parent_id] = group_sums.get(parent_id, 0.0) + v
+
+        # Route flows
+        for k, v in p['ausgaben_input'].items():
+            if v > 0:
+                parent_id = id_to_parent.get(k)
+                name = id_to_name.get(k, k)
+                if parent_id:
+                    parent_name = id_to_name.get(parent_id, parent_id)
+                    add_sq(parent_name, name, v)
+                else:
+                    add_sq("Haushalts-Budget", name, v)
+
+        for g_id, g_sum in group_sums.items():
+            if g_sum > 0:
+                g_name = id_to_name.get(g_id, g_id)
+                add_sq("Haushalts-Budget", g_name, g_sum)
         
         fig_sq = create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", True)
         charts["sankey_aktiv"] = fig_sq.to_image(format="png", width=1000, height=500)
@@ -156,19 +182,46 @@ with tab1:
                 sq_targets.append(sq_labels.index(t))
                 sq_values.append(v)
         
+        # Get category lookup for parents and names
+        id_to_name = {kat["id"]: kat["name"] for kat in p.get("haushaltsbuch_kategorien", [])}
+        id_to_parent = {kat["id"]: kat["parent_id"] for kat in p.get("haushaltsbuch_kategorien", [])}
+
         a_sq_sum = sum(p['ausgaben_input'].values())
         d_sq = p['aktuelles_netto'] - a_sq_sum
         add_sq("Aktuelles Netto", "Haushalts-Budget", p['aktuelles_netto'])
         if d_sq > 0: add_sq("Haushalts-Budget", "Liquiditäts-Überschuss", d_sq)
         elif d_sq < 0: add_sq("Liquiditäts-Unterdeckung", "Haushalts-Budget", abs(d_sq))
-        for k, v in p['ausgaben_input'].items(): add_sq("Haushalts-Budget", k, v)
+        
+        # Calculate group sums for status quo
+        group_sums = {}
+        for k, v in p['ausgaben_input'].items():
+            parent_id = id_to_parent.get(k)
+            if parent_id:
+                group_sums[parent_id] = group_sums.get(parent_id, 0.0) + v
+
+        # Route flows
+        for k, v in p['ausgaben_input'].items():
+            if v > 0:
+                parent_id = id_to_parent.get(k)
+                name = id_to_name.get(k, k)
+                if parent_id:
+                    parent_name = id_to_name.get(parent_id, parent_id)
+                    add_sq(parent_name, name, v)
+                else:
+                    add_sq("Haushalts-Budget", name, v)
+
+        for g_id, g_sum in group_sums.items():
+            if g_sum > 0:
+                g_name = id_to_name.get(g_id, g_id)
+                add_sq("Haushalts-Budget", g_name, g_sum)
+
         st.plotly_chart(create_sankey(sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", p['show_values']), width='stretch')
         with st.expander("Daten zum Status Quo anzeigen"):
             import pandas as pd
             df_sq_data = pd.DataFrame([
                 {"Kategorie": "Einnahmen", "Posten": "Aktuelles Netto", "Betrag": p['aktuelles_netto']},
                 {"Kategorie": "Bilanz", "Posten": "Überschuss/Defizit", "Betrag": d_sq}
-            ] + [{"Kategorie": "Ausgaben", "Posten": k, "Betrag": v} for k, v in p['ausgaben_input'].items()])
+            ] + [{"Kategorie": "Ausgaben", "Posten": id_to_name.get(k, k), "Betrag": v} for k, v in p['ausgaben_input'].items()])
             st_display_table(df_sq_data, "Status_Quo_Cashflow", money_cols=["Betrag"])
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -320,9 +373,34 @@ with tab1:
         elif res['Überschuss/Defizit'] < 0:
             add_r("Liquiditäts-Unterdeckung", "Verfügbares Budget", abs(res['Überschuss/Defizit']))
 
+        # Get category lookup for parents and names
+        id_to_name = {kat["id"]: kat["name"] for kat in p.get("haushaltsbuch_kategorien", [])}
+        id_to_parent = {kat["id"]: kat["parent_id"] for kat in p.get("haushaltsbuch_kategorien", [])}
+        
+        # Calculate dynamic group sums for the active year in 'res'
+        group_sums = {}
         for k in p['ausgaben_kategorien']:
             val = res.get(f"EXP_{k}", 0.0)
-            if val > 0: add_r("Verfügbares Budget", k, val)
+            parent_id = id_to_parent.get(k)
+            if parent_id and val > 0:
+                group_sums[parent_id] = group_sums.get(parent_id, 0.0) + val
+                
+        # Route flows
+        for k in p['ausgaben_kategorien']:
+            val = res.get(f"EXP_{k}", 0.0)
+            if val > 0:
+                parent_id = id_to_parent.get(k)
+                name = id_to_name.get(k, k)
+                if parent_id:
+                    parent_name = id_to_name.get(parent_id, parent_id)
+                    add_r(parent_name, name, val)
+                else:
+                    add_r("Verfügbares Budget", name, val)
+                    
+        for g_id, g_sum in group_sums.items():
+            if g_sum > 0:
+                g_name = id_to_name.get(g_id, g_id)
+                add_r("Verfügbares Budget", g_name, g_sum)
             
         st.plotly_chart(create_sankey(l_r, s_r, t_r, v_r, f"Cashflow Simulation {selected_label}", p['show_values']), width='stretch')
         with st.expander(f"Details zum Zeitraum {selected_label} anzeigen"):
@@ -331,8 +409,13 @@ with tab1:
             for k, v in res.items():
                 if k in ["Brutto", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "EkSt", "Soli", "KiSt", "Sozialabgaben"]:
                     sim_data.append({"Posten": k, "Wert": v})
-                elif k.startswith("EXP_") or k.startswith("Entnahme: ") or k in p['ausgaben_kategorien']:
-                    sim_data.append({"Posten": k.replace("EXP_", ""), "Wert": v})
+                elif k.startswith("EXP_"):
+                    cat_id = k.replace("EXP_", "")
+                    sim_data.append({"Posten": id_to_name.get(cat_id, cat_id), "Wert": v})
+                elif k.startswith("Entnahme: "):
+                    sim_data.append({"Posten": k, "Wert": v})
+                elif k in p['ausgaben_kategorien']:
+                    sim_data.append({"Posten": id_to_name.get(k, k), "Wert": v})
             
             import pandas as pd
             df_sim_year = pd.DataFrame(sim_data)

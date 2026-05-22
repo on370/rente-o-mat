@@ -86,12 +86,49 @@ def render_sidebar():
     if "befristete_ausgaben" not in st.session_state:
         st.session_state.befristete_ausgaben = []
 
-    # Haushaltsbuch-Kategorien
-    for kat in ["Wohnen", "Mobilität", "Lebensmittel", "Versicherungen", "Gesundheit", "Freizeit", "Sonstiges"]:
-        if f"c_{kat}" not in st.session_state:
-            st.session_state[f"c_{kat}"] = 1200.0 if kat == "Wohnen" else 200.0
-        if f"a_{kat}" not in st.session_state:
-            st.session_state[f"a_{kat}"] = 100
+    # Initialisierung des strukturierten Haushaltsbuchs
+    def sync_haushaltsbuch():
+        if "haushaltsbuch_kategorien" not in st.session_state:
+            default_kats = ["Wohnen", "Mobilität", "Lebensmittel", "Versicherungen", "Gesundheit", "Freizeit", "Sonstiges"]
+            st.session_state.haushaltsbuch_kategorien = []
+            for kat in default_kats:
+                c_key = f"c_{kat}"
+                a_key = f"a_{kat}"
+                val = st.session_state.get(c_key, 1200.0 if kat == "Wohnen" else 200.0)
+                rv = st.session_state.get(a_key, 100)
+                st.session_state.haushaltsbuch_kategorien.append({
+                    "id": kat,
+                    "name": kat,
+                    "parent_id": None,
+                    "is_group": False,
+                    "betrag": float(val),
+                    "rv_pct": int(rv)
+                })
+
+        for kat in st.session_state.haushaltsbuch_kategorien:
+            if not kat.get("is_group"):
+                c_key = f"c_{kat['id']}"
+                a_key = f"a_{kat['id']}"
+                if c_key in st.session_state:
+                    kat["betrag"] = float(st.session_state[c_key])
+                else:
+                    st.session_state[c_key] = float(kat.get("betrag", 0.0))
+                if a_key in st.session_state:
+                    kat["rv_pct"] = int(st.session_state[a_key])
+                else:
+                    st.session_state[a_key] = int(kat.get("rv_pct", 100))
+
+    sync_haushaltsbuch()
+
+    ausgaben_kategorien = [
+        kat["id"]
+        for kat in st.session_state.haushaltsbuch_kategorien
+        if not kat.get("is_group")
+    ]
+    id_to_name = {
+        kat["id"]: kat["name"]
+        for kat in st.session_state.haushaltsbuch_kategorien
+    }
 
     # --- 1. IMPORT-LOGIK (Muss vor dem Rendern der Widgets laufen) ---
     if st.session_state.get("do_import") and st.session_state.get("import_file"):
@@ -160,29 +197,16 @@ def render_sidebar():
                 "aktuelles_netto": st.session_state.get("netto_key", 4500.0),
                 "show_values": st.session_state.get("show_vals_key", True),
                 "einnahmen": st.session_state.get("einnahmen", []),
+                "haushaltsbuch_kategorien": st.session_state.get("haushaltsbuch_kategorien", []),
                 "ausgaben_input": {
-                    k: st.session_state.get(f"c_{k}", 200.0)
-                    for k in [
-                        "Wohnen",
-                        "Mobilität",
-                        "Lebensmittel",
-                        "Versicherungen",
-                        "Gesundheit",
-                        "Freizeit",
-                        "Sonstiges",
-                    ]
+                    kat["id"]: kat["betrag"]
+                    for kat in st.session_state.get("haushaltsbuch_kategorien", [])
+                    if not kat.get("is_group")
                 },
                 "anpassungsfaktor_input": {
-                    k: st.session_state.get(f"a_{k}", 100)
-                    for k in [
-                        "Wohnen",
-                        "Mobilität",
-                        "Lebensmittel",
-                        "Versicherungen",
-                        "Gesundheit",
-                        "Freizeit",
-                        "Sonstiges",
-                    ]
+                    kat["id"]: kat["rv_pct"]
+                    for kat in st.session_state.get("haushaltsbuch_kategorien", [])
+                    if not kat.get("is_group")
                 },
                 "inflation_rate": st.session_state.get("infl_rate_key", 2.0),
                 "rentenanpassung_rate": st.session_state.get("renten_anp_key", 2.0),
@@ -792,31 +816,225 @@ def render_sidebar():
 
         # --- 6. HAUSHALTSBUCH ---
         with st.expander("🏠 Haushaltsbuch (Ausgaben)", expanded=False):
-            ausgaben_kategorien = [
-                "Wohnen",
-                "Mobilität",
-                "Lebensmittel",
-                "Versicherungen",
-                "Gesundheit",
-                "Freizeit",
-                "Sonstiges",
-            ]
-            ausgaben_input, anpassungsfaktor_input = {}, {}
             st.caption("Ausgabe in Aktivphase | Rentenanpassung in %")
-            for kat in ausgaben_kategorien:
-                c1, c2 = st.columns([0.6, 0.4])
-                ausgaben_input[kat] = c1.number_input(
-                    f"{kat}",
-                    min_value=0.0,
-                    key=f"c_{kat}",
-                )
-                anpassungsfaktor_input[kat] = c2.slider(
-                    f"RV%",
-                    0,
-                    200,
-                    key=f"a_{kat}",
-                    label_visibility="collapsed",
-                )
+            
+            kats = st.session_state.haushaltsbuch_kategorien
+            group_ids = {k["id"] for k in kats if k.get("is_group")}
+            
+            # Helper to calculate group sum
+            def get_group_sum(group_id):
+                s = 0.0
+                for kat in kats:
+                    if not kat.get("is_group") and kat.get("parent_id") == group_id:
+                        s += float(st.session_state.get(f"c_{kat['id']}", kat.get("betrag", 0.0)))
+                return s
+
+            # Group children and find top level items
+            group_children = {gid: [] for gid in group_ids}
+            top_level_items = []
+
+            for kat in kats:
+                pid = kat.get("parent_id")
+                if pid and pid in group_ids:
+                    group_children[pid].append(kat)
+                else:
+                    top_level_items.append(kat)
+
+            # Loop to render
+            for item in top_level_items:
+                if item.get("is_group"):
+                    # Group rendering
+                    g_sum = get_group_sum(item["id"])
+                    
+                    # Collapse state management
+                    col_key = f"collapsed_{item['id']}"
+                    if col_key not in st.session_state:
+                        st.session_state[col_key] = False
+                    
+                    collapsed = st.session_state[col_key]
+                    toggle_icon = "▶" if collapsed else "▼"
+                    
+                    c_g1, c_g2, c_g3 = st.columns([0.12, 0.73, 0.15])
+                    if c_g1.button(toggle_icon, key=f"tg_{item['id']}", use_container_width=True):
+                        st.session_state[col_key] = not collapsed
+                        st.session_state.global_rerun = True
+                        st.rerun()
+                        
+                    g_sum_str = f"{g_sum:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                    c_g2.markdown(f"📁 **{item['name']}** ({g_sum_str})")
+                    with c_g3:
+                        with st.popover("⚙️", key=f"opt_{item['id']}"):
+                            st.markdown("**Gruppen-Optionen**")
+                            # Rename group
+                            new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}")
+                            if new_name != item["name"] and new_name.strip():
+                                item["name"] = new_name.strip()
+                                st.session_state.global_rerun = True
+                                st.rerun()
+                            # Delete group with child promotion
+                            if st.button("🗑️ Gruppe löschen", key=f"del_{item['id']}", use_container_width=True):
+                                for child in st.session_state.haushaltsbuch_kategorien:
+                                    if child.get("parent_id") == item["id"]:
+                                        child["parent_id"] = None
+                                st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != item["id"]]
+                                st.session_state.global_rerun = True
+                                st.rerun()
+                    
+                    # Children of this group (only if expanded)
+                    if not collapsed:
+                        children = group_children.get(item["id"], [])
+                        for child in children:
+                            # Child Header: Name next to settings gear
+                            c_lbl, c_gear = st.columns([0.85, 0.15])
+                            c_lbl.markdown(f"└─ **{child['name']}**")
+                            with c_gear:
+                                with st.popover("⚙️", key=f"opt_{child['id']}"):
+                                    st.markdown("**Kategorie-Optionen**")
+                                    # Rename
+                                    new_name = st.text_input("Name bearbeiten", value=child["name"], key=f"ren_{child['id']}")
+                                    if new_name != child["name"] and new_name.strip():
+                                        child["name"] = new_name.strip()
+                                        st.session_state.global_rerun = True
+                                        st.rerun()
+                                    # Move parent group
+                                    p_options = ["— Hauptebene —"] + [g["name"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                                    p_ids = [None] + [g["id"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                                    curr_pid = child.get("parent_id")
+                                    curr_idx = p_ids.index(curr_pid) if curr_pid in p_ids else 0
+                                    sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{child['id']}")
+                                    new_pid = p_ids[sel_p]
+                                    if new_pid != curr_pid:
+                                        child["parent_id"] = new_pid
+                                        st.session_state.global_rerun = True
+                                        st.rerun()
+                                    # Delete
+                                    if st.button("🗑️ Löschen", key=f"del_{child['id']}", use_container_width=True):
+                                        st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != child["id"]]
+                                        c_key = f"c_{child['id']}"
+                                        a_key = f"a_{child['id']}"
+                                        if c_key in st.session_state:
+                                            del st.session_state[c_key]
+                                        if a_key in st.session_state:
+                                            del st.session_state[a_key]
+                                        st.session_state.global_rerun = True
+                                        st.rerun()
+                            
+                            # Child Inputs: side-by-side
+                            c_val, c_sl = st.columns([0.5, 0.5])
+                            c_val.number_input(
+                                "Betrag",
+                                min_value=0.0,
+                                key=f"c_{child['id']}",
+                                label_visibility="collapsed",
+                            )
+                            c_sl.slider(
+                                "RV%",
+                                0,
+                                200,
+                                key=f"a_{child['id']}",
+                                label_visibility="collapsed",
+                            )
+                    st.markdown("---")
+                else:
+                    # Top-level leaf rendering
+                    # Header: Name next to settings gear
+                    c_lbl, c_gear = st.columns([0.85, 0.15])
+                    c_lbl.markdown(f"**{item['name']}**")
+                    with c_gear:
+                        with st.popover("⚙️", key=f"opt_{item['id']}"):
+                            st.markdown("**Kategorie-Optionen**")
+                            # Rename
+                            new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}")
+                            if new_name != item["name"] and new_name.strip():
+                                item["name"] = new_name.strip()
+                                st.session_state.global_rerun = True
+                                st.rerun()
+                            # Move parent group
+                            p_options = ["— Hauptebene —"] + [g["name"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                            p_ids = [None] + [g["id"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                            curr_pid = item.get("parent_id")
+                            curr_idx = p_ids.index(curr_pid) if curr_pid in p_ids else 0
+                            sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{item['id']}")
+                            new_pid = p_ids[sel_p]
+                            if new_pid != curr_pid:
+                                item["parent_id"] = new_pid
+                                st.session_state.global_rerun = True
+                                st.rerun()
+                            # Delete
+                            if st.button("🗑️ Löschen", key=f"del_{item['id']}", use_container_width=True):
+                                st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != item["id"]]
+                                c_key = f"c_{item['id']}"
+                                a_key = f"a_{item['id']}"
+                                if c_key in st.session_state:
+                                    del st.session_state[c_key]
+                                if a_key in st.session_state:
+                                    del st.session_state[a_key]
+                                st.session_state.global_rerun = True
+                                st.rerun()
+                    
+                    # Inputs: side-by-side
+                    c_val, c_sl = st.columns([0.5, 0.5])
+                    c_val.number_input(
+                        "Betrag",
+                        min_value=0.0,
+                        key=f"c_{item['id']}",
+                        label_visibility="collapsed",
+                    )
+                    c_sl.slider(
+                        "RV%",
+                        0,
+                        200,
+                        key=f"a_{item['id']}",
+                        label_visibility="collapsed",
+                    )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                with st.popover("➕ Kategorie", use_container_width=True):
+                    new_cat_name = st.text_input("Name", key="new_cat_name")
+                    new_cat_betrag = st.number_input("Betrag (€/mtl.)", min_value=0.0, value=100.0, key="new_cat_betrag")
+                    # Optional: choose parent on creation
+                    group_options = ["— Hauptebene —"] + [g["name"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                    g_ids = [None] + [g["id"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                    new_cat_parent_idx = st.selectbox("Gruppe", options=range(len(group_options)), format_func=lambda idx: group_options[idx], key="new_cat_parent")
+                    new_cat_parent_id = g_ids[new_cat_parent_idx]
+                    
+                    if st.button("Hinzufügen", key="add_cat_confirm", use_container_width=True):
+                        if new_cat_name.strip():
+                            import time
+                            new_id = f"kat_{int(time.time() * 1000)}"
+                            st.session_state.haushaltsbuch_kategorien.append({
+                                "id": new_id,
+                                "name": new_cat_name.strip(),
+                                "parent_id": new_cat_parent_id,
+                                "is_group": False,
+                                "betrag": float(new_cat_betrag),
+                                "rv_pct": 100
+                            })
+                            # Set session state keys for the new category
+                            st.session_state[f"c_{new_id}"] = float(new_cat_betrag)
+                            st.session_state[f"a_{new_id}"] = 100
+                            st.session_state.global_rerun = True
+                            st.rerun()
+
+            with col_btn2:
+                with st.popover("📁 Sammel-Kat.", use_container_width=True):
+                    new_group_name = st.text_input("Gruppenname", key="new_group_name")
+                    if st.button("Hinzufügen", key="add_group_confirm", use_container_width=True):
+                        if new_group_name.strip():
+                            import time
+                            new_id = f"group_{int(time.time() * 1000)}"
+                            st.session_state.haushaltsbuch_kategorien.append({
+                                "id": new_id,
+                                "name": new_group_name.strip(),
+                                "parent_id": None,
+                                "is_group": True,
+                                "betrag": 0.0,
+                                "rv_pct": 100
+                            })
+                            st.session_state.global_rerun = True
+                            st.rerun()
 
         # --- 6b. BEFRISTETE AUSGABEN ---
         if "befristete_ausgaben" not in st.session_state:
@@ -871,24 +1089,37 @@ def render_sidebar():
                 )
 
                 # Kategorie: bestehende wählen ODER neue eingeben
-                kat_optionen = ausgaben_kategorien + ["— Neue Kategorie —"]
-                curr_kat = curr.get("kategorie", "")
-                if curr_kat in ausgaben_kategorien:
-                    kat_idx = ausgaben_kategorien.index(curr_kat)
+                leaves = [kat for kat in st.session_state.haushaltsbuch_kategorien if not kat.get("is_group")]
+                kat_optionen = [kat["name"] for kat in leaves] + ["— Neue Kategorie —"]
+                kat_ids = [kat["id"] for kat in leaves] + ["— Neue Kategorie —"]
+                
+                curr_kat_id = curr.get("kategorie", "")
+                if curr_kat_id in kat_ids:
+                    kat_idx = kat_ids.index(curr_kat_id)
                 else:
-                    kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
+                    matching_ids = [kat["id"] for kat in leaves if kat["name"] == curr_kat_id]
+                    if matching_ids:
+                        kat_idx = kat_ids.index(matching_ids[0])
+                    else:
+                        kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
 
                 ba_kat_sel = st.selectbox(
-                    "Kategorie", kat_optionen, index=kat_idx, key="ba_kat_sel"
+                    "Kategorie",
+                    options=range(len(kat_optionen)),
+                    format_func=lambda idx: kat_optionen[idx],
+                    index=kat_idx,
+                    key="ba_kat_sel"
                 )
-                if ba_kat_sel == "— Neue Kategorie —":
+                selected_kat_id = kat_ids[ba_kat_sel]
+                
+                if selected_kat_id == "— Neue Kategorie —":
                     ba_kat = st.text_input(
                         "Neue Kategorie",
-                        value=curr_kat if curr_kat not in ausgaben_kategorien else "",
+                        value=curr_kat_id if curr_kat_id not in kat_ids else "",
                         key="ba_kat_new",
                     )
                 else:
-                    ba_kat = ba_kat_sel
+                    ba_kat = selected_kat_id
 
                 ba_infl = st.checkbox(
                     "Steigt mit Inflation",
@@ -898,12 +1129,36 @@ def render_sidebar():
 
                 bc1, bc2 = st.columns(2)
                 if bc1.button("💾 Speichern", key="ba_save"):
+                    if selected_kat_id == "— Neue Kategorie —":
+                        typed_name = ba_kat.strip() if ba_kat else ba_name.strip()
+                        # Check if a category with this name already exists
+                        existing = [k for k in st.session_state.haushaltsbuch_kategorien if k["name"].lower() == typed_name.lower()]
+                        if existing:
+                            final_kat_id = existing[0]["id"]
+                        else:
+                            # Create new leaf category
+                            import time
+                            new_id = f"kat_{int(time.time() * 1000)}"
+                            st.session_state.haushaltsbuch_kategorien.append({
+                                "id": new_id,
+                                "name": typed_name,
+                                "parent_id": None,
+                                "is_group": False,
+                                "betrag": 0.0,
+                                "rv_pct": 100
+                            })
+                            st.session_state[f"c_{new_id}"] = 0.0
+                            st.session_state[f"a_{new_id}"] = 100
+                            final_kat_id = new_id
+                    else:
+                        final_kat_id = selected_kat_id
+
                     new_ba = {
                         "name": ba_name,
                         "betrag_mtl": ba_betrag,
                         "start": ba_start,
                         "ende": ba_ende,
-                        "kategorie": ba_kat if ba_kat else ba_name,
+                        "kategorie": final_kat_id,
                         "inflationsgebunden": ba_infl,
                     }
                     if is_edit:
@@ -926,8 +1181,10 @@ def render_sidebar():
 
             for i, ba in enumerate(st.session_state.befristete_ausgaben):
                 col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+                kat_id = ba.get("kategorie", "")
+                kat_display = id_to_name.get(kat_id, kat_id)
                 col1.write(
-                    f"**{ba['name']}**\n{ba['betrag_mtl']:.0f}€ bis {ba['ende']}"
+                    f"**{ba['name']}** ({kat_display})\n{ba['betrag_mtl']:.0f}€ bis {ba['ende']}"
                 )
                 if col2.button("✏️", key=f"ba_e_{i}"):
                     st.session_state.ba_edit_idx, st.session_state.ba_show_add = (
@@ -1018,6 +1275,17 @@ def render_sidebar():
                 help="Verzinsung für den Notgroschen (z.B. Tagesgeld)."
             )
 
+        ausgaben_input = {
+            kat["id"]: kat["betrag"]
+            for kat in st.session_state.haushaltsbuch_kategorien
+            if not kat.get("is_group")
+        }
+        anpassungsfaktor_input = {
+            kat["id"]: kat["rv_pct"]
+            for kat in st.session_state.haushaltsbuch_kategorien
+            if not kat.get("is_group")
+        }
+
         return {
             "nutzer_name": nutzer_name,
             "geburtsjahr": geburtsjahr,
@@ -1046,4 +1314,5 @@ def render_sidebar():
             "liquidity_yield": liq_yield,
             "befristete_ausgaben": st.session_state.befristete_ausgaben,
             "assets": st.session_state.assets,
+            "haushaltsbuch_kategorien": st.session_state.haushaltsbuch_kategorien,
         }

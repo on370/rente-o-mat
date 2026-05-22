@@ -40,7 +40,10 @@ Da in der Vergangenheit durch Prototyping, bulk commits und decimal slips Abweic
 | **`0091`** | Regulär | Robuster Select Slider mit typsicherem State-Mapping | Letzter dokumentierter Build vor einer Serie von Iterationen. |
 | **`0091` bis `009A`** | **Anomalie** | Siehe Liste unten (9 Iterationen ohne Inkrement) | **Stuck at `0091`:** Die Build-Nummer verharrte über 9 Iterationen hinweg fälschlicherweise auf `0091`, da der AI-Agent vergaß, `config.py` anzupassen. |
 | **`009B`** | Korrektur | Behebung der Buildnummern-Verstummung | Rechnerischer Ausgleich der 9 vergessenen Iterationen seit `0091` (`0091` + 9 = `009A` + 1 = `009B`). |
-| **`009C`** | Regulär | Behebung des `StreamlitValueAssignmentNotAllowedError` beim Importieren | **Aktueller Build:** Einführung eines dynamischen Keys für den `file_uploader`, um den Widget-Zustand sicher zurückzusetzen. |
+| **`009C`** | Regulär | Behebung des `StreamlitValueAssignmentNotAllowedError` beim Importieren | Einführung eines dynamischen Keys für den `file_uploader`, um den Widget-Zustand sicher zurückzusetzen. |
+| **`009D`** | Regulär | Hierarchisches Simulation-Sankey-Routing & Definitionen-Fix | Gruppenweises Aggregieren und Routen der Kategorien im Simulations-Sankey-Diagramm, Behebung der Namensauflösung im Details-Tab und Behebung des Scope-Fehlers bei den Inputs in der Sidebar. |
+| **`009E`** | Regulär | Abwärtskompatibilität beim Profil-Import behoben | Behebung des `AttributeError` bei Alt-Profilen durch dynamisches Migrieren der flachen `ausgaben_input`-Datenstruktur in die neue hierarchische `haushaltsbuch_kategorien`-Struktur. |
+| **`009F`** | Regulär | Kompakteres Budget-Layout & Kollabierbarkeit | Platzsparende Verlegung des Einstellungs-Zahnrads (⚙️) direkt neben den Kategorienamen sowie Einführung einer kollabierbaren Steuerung für Sammelkategorien über Session-State. |
 
 ---
 

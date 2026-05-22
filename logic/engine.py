@@ -118,13 +118,17 @@ def _calculate_grv_components(jahr_float, e, params):
     }
 
 
-def calculate_financials_for_year(jahr_float, params, assets_state=None):
+def calculate_financials_for_year(jahr_float, params, assets_state=None, segment_weight=1.0, start_t=None, end_t=None):
     """
     Zentrale Berechnungspipeline für ein spezifisches Jahr.
     1. Einnahmen (Aktiv, ATZ oder Rente)
     2. Assets (Rendite, Steuern, Entnahmen)
-    3. Ausgaben (Basis, Dynamik, befristete Posten)
+    3. Ausgaben (Basis, Dynamik, befristete Posten, Einmalausgaben)
     """
+    if start_t is None:
+        start_t = float(int(jahr_float))
+    if end_t is None:
+        end_t = float(int(jahr_float)) + 1.0
     from logic.taxes import (
         berechne_einkommensteuer, berechne_progressionsvorbehalt,
         berechne_rentensteuer_anteil, berechne_soli, berechne_kirchensteuer,
@@ -346,6 +350,19 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None):
             ausgaben_details[f"EXP_{kat}"] = ausgaben_details.get(f"EXP_{kat}", 0) + b
             ausgaben += b
 
+    for ea in params.get('einmalige_ausgaben', []):
+        t_event = float(ea['jahr']) + (int(ea.get('monat', 1)) - 1) / 12.0
+        if start_t <= t_event < end_t:
+            b = ea['betrag']
+            if ea.get('inflationsgebunden', True):
+                b = _dynamisiere_betrag(b, aktuelles_jahr, ea['jahr'], inflation_rate)
+            
+            b_eff = b / (12.0 * segment_weight)
+            kat = ea.get('kategorie', '')
+            final_kat = kat if kat else ea['name']
+            ausgaben_details[f"EXP_{final_kat}"] = ausgaben_details.get(f"EXP_{final_kat}", 0) + b_eff
+            ausgaben += b_eff
+
     steuer_g = steuer_ekst + soli + kist
     tax_rate = (steuer_g / b_g * 100) if b_g > 0 else 0
     res = {
@@ -393,13 +410,18 @@ def generate_trend_data(jahre, params):
         if mitte % 1 != 0: transitions_global.append(mitte)
     if rentenbeginn % 1 != 0: transitions_global.append(rentenbeginn)
 
+    for ea in params.get('einmalige_ausgaben', []):
+        t_event = float(ea['jahr']) + (int(ea.get('monat', 1)) - 1) / 12.0
+        if t_event % 1 != 0:
+            transitions_global.append(t_event)
+
     for j in jahre:
         # Finde Übergänge in DIESEM Jahr
         transitions = [t for t in transitions_global if j < t < j + 1]
         transitions = sorted(list(set(transitions)))
         
         if not transitions:
-            res = calculate_financials_for_year(j + 0.5, params, assets_state)
+            res = calculate_financials_for_year(j + 0.5, params, assets_state, segment_weight=1.0, start_t=float(j), end_t=float(j) + 1.0)
             res["Jahr_Float"] = float(j)
             res["start_t"] = float(j)
             res["end_t"] = float(j) + 1.0
@@ -414,7 +436,7 @@ def generate_trend_data(jahre, params):
                 weight = tr - last_t
                 if weight > 0:
                     mid_t = last_t + weight / 2.0
-                    res = calculate_financials_for_year(mid_t, params, assets_state)
+                    res = calculate_financials_for_year(mid_t, params, assets_state, segment_weight=weight, start_t=last_t, end_t=tr)
                     res["Jahr_Float"] = mid_t
                     res["start_t"] = last_t
                     res["end_t"] = tr

@@ -44,6 +44,7 @@ Da in der Vergangenheit durch Prototyping, bulk commits und decimal slips Abweic
 | **`009D`** | Regulär | Hierarchisches Simulation-Sankey-Routing & Definitionen-Fix | Gruppenweises Aggregieren und Routen der Kategorien im Simulations-Sankey-Diagramm, Behebung der Namensauflösung im Details-Tab und Behebung des Scope-Fehlers bei den Inputs in der Sidebar. |
 | **`009E`** | Regulär | Abwärtskompatibilität beim Profil-Import behoben | Behebung des `AttributeError` bei Alt-Profilen durch dynamisches Migrieren der flachen `ausgaben_input`-Datenstruktur in die neue hierarchische `haushaltsbuch_kategorien`-Struktur. |
 | **`009F`** | Regulär | Kompakteres Budget-Layout & Kollabierbarkeit | Platzsparende Verlegung des Einstellungs-Zahnrads (⚙️) direkt neben den Kategorienamen sowie Einführung einer kollabierbaren Steuerung für Sammelkategorien über Session-State. |
+| **`00A0`** | Regulär | Jahr- und monatgenaue einmalige Sonderausgaben (Option A) | Einführung von einmaligen Sonderausgaben (z.B. Weltreise, neues Dach) mit monatgenauem Liquiditätsabzug in der Simulations-Engine und Duzen-konformen, side-by-side Buttons und Formularen im UI. |
 
 ---
 

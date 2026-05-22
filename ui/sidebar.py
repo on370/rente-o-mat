@@ -85,6 +85,8 @@ def render_sidebar():
         st.session_state.assets = []
     if "befristete_ausgaben" not in st.session_state:
         st.session_state.befristete_ausgaben = []
+    if "einmalige_ausgaben" not in st.session_state:
+        st.session_state.einmalige_ausgaben = []
 
     # Initialisierung des strukturierten Haushaltsbuchs
     def sync_haushaltsbuch():
@@ -215,6 +217,7 @@ def render_sidebar():
                 "liquidity_reserve": st.session_state.get("liq_reserve_key", 10000.0),
                 "liquidity_yield": st.session_state.get("liq_yield_key", 0.0),
                 "befristete_ausgaben": st.session_state.get("befristete_ausgaben", []),
+                "einmalige_ausgaben": st.session_state.get("einmalige_ausgaben", []),
                 "assets": st.session_state.get("assets", []),
             }
             json_str = export_settings(export_params)
@@ -1044,24 +1047,40 @@ def render_sidebar():
         if "ba_show_add" not in st.session_state:
             st.session_state.ba_show_add = False
 
-        with st.expander("⏱️ Befristete Ausgaben", expanded=False):
-            st.caption("Zeitlich begrenzte Kosten (Kredit, Unterhalt, etc.)")
+        if "einmalige_ausgaben" not in st.session_state:
+            st.session_state.einmalige_ausgaben = []
+        if "ea_edit_idx" not in st.session_state:
+            st.session_state.ea_edit_idx = None
+        if "ea_show_add" not in st.session_state:
+            st.session_state.ea_show_add = False
+
+        with st.expander("⏱️ Befristete & Einmalige Ausgaben", expanded=False):
+            st.caption("Zeitlich begrenzte Kosten und deine einmaligen Sonderausgaben (z.B. Weltreise, neues Dach)")
 
             if (
                 not st.session_state.ba_show_add
                 and st.session_state.ba_edit_idx is None
+                and not st.session_state.ea_show_add
+                and st.session_state.ea_edit_idx is None
             ):
-                if st.button("➕ Neue befristete Ausgabe"):
+                col_btn_ba, col_btn_ea = st.columns(2)
+                if col_btn_ba.button("➕ Befristete Ausg.", use_container_width=True):
                     st.session_state.ba_show_add = True
                     st.session_state.global_rerun = True
+                    st.rerun()
+                if col_btn_ea.button("➕ Einmalausgabe", use_container_width=True):
+                    st.session_state.ea_show_add = True
+                    st.session_state.global_rerun = True
+                    st.rerun()
 
+            # Formular befristete Ausgabe
             if st.session_state.ba_show_add or st.session_state.ba_edit_idx is not None:
                 is_edit = st.session_state.ba_edit_idx is not None
                 curr = (
                     st.session_state.befristete_ausgaben[st.session_state.ba_edit_idx]
                     if is_edit
                     else {
-                        "name": "Neue Ausgabe",
+                        "name": "Neue befristete Ausgabe",
                         "betrag_mtl": 500.0,
                         "start": aktuelles_jahr,
                         "ende": aktuelles_jahr + 10,
@@ -1069,8 +1088,8 @@ def render_sidebar():
                         "inflationsgebunden": False,
                     }
                 )
-                st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
-                ba_name = st.text_input("Name", value=curr["name"], key="ba_name")
+                st.markdown("##### " + ("Befristete Ausgabe bearbeiten" if is_edit else "Befristete Ausgabe hinzufügen"))
+                ba_name = st.text_input("Name deiner Ausgabe", value=curr["name"], key="ba_name")
                 ba_betrag = st.number_input(
                     "Betrag (€/mtl.)",
                     value=float(curr["betrag_mtl"]),
@@ -1090,8 +1109,8 @@ def render_sidebar():
 
                 # Kategorie: bestehende wählen ODER neue eingeben
                 leaves = [kat for kat in st.session_state.haushaltsbuch_kategorien if not kat.get("is_group")]
-                kat_optionen = [kat["name"] for kat in leaves] + ["— Neue Kategorie —"]
-                kat_ids = [kat["id"] for kat in leaves] + ["— Neue Kategorie —"]
+                kat_optionen = [kat["name"] for kat in leaves] + ["Hauptebene", "— Neue Kategorie —"]
+                kat_ids = [kat["id"] for kat in leaves] + ["", "— Neue Kategorie —"]
                 
                 curr_kat_id = curr.get("kategorie", "")
                 if curr_kat_id in kat_ids:
@@ -1131,7 +1150,6 @@ def render_sidebar():
                 if bc1.button("💾 Speichern", key="ba_save"):
                     if selected_kat_id == "— Neue Kategorie —":
                         typed_name = ba_kat.strip() if ba_kat else ba_name.strip()
-                        # Check if a category with this name already exists
                         existing = [k for k in st.session_state.haushaltsbuch_kategorien if k["name"].lower() == typed_name.lower()]
                         if existing:
                             final_kat_id = existing[0]["id"]
@@ -1172,31 +1190,196 @@ def render_sidebar():
                         False,
                     )
                     st.session_state.global_rerun = True
+                    st.rerun()
                 if bc2.button("❌ Abbrechen", key="ba_cancel"):
                     st.session_state.ba_edit_idx, st.session_state.ba_show_add = (
                         None,
                         False,
                     )
                     st.session_state.global_rerun = True
+                    st.rerun()
 
-            for i, ba in enumerate(st.session_state.befristete_ausgaben):
-                col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
-                kat_id = ba.get("kategorie", "")
-                kat_display = id_to_name.get(kat_id, kat_id)
-                col1.write(
-                    f"**{ba['name']}** ({kat_display})\n{ba['betrag_mtl']:.0f}€ bis {ba['ende']}"
+            # Formular einmalige Ausgabe
+            if st.session_state.ea_show_add or st.session_state.ea_edit_idx is not None:
+                is_edit = st.session_state.ea_edit_idx is not None
+                curr = (
+                    st.session_state.einmalige_ausgaben[st.session_state.ea_edit_idx]
+                    if is_edit
+                    else {
+                        "name": "Neue Einmalausgabe",
+                        "betrag": 5000.0,
+                        "jahr": aktuelles_jahr,
+                        "monat": 1,
+                        "kategorie": "",
+                        "inflationsgebunden": True,
+                    }
                 )
-                if col2.button("✏️", key=f"ba_e_{i}"):
-                    st.session_state.ba_edit_idx, st.session_state.ba_show_add = (
-                        i,
+                st.markdown("##### " + ("Einmalausgabe bearbeiten" if is_edit else "Einmalausgabe hinzufügen"))
+                ea_name = st.text_input("Name deiner Einmalausgabe", value=curr["name"], key="ea_name")
+                ea_betrag = st.number_input(
+                    "Einmalbetrag (€)",
+                    value=float(curr["betrag"]),
+                    min_value=0.0,
+                    key="ea_betrag",
+                )
+                ea_c1, ea_c2 = st.columns(2)
+                ea_jahr = ea_c1.number_input(
+                    "Jahr", value=int(curr["jahr"]), min_value=2000, key="ea_jahr"
+                )
+                monate_namen = [
+                    "Januar", "Februar", "März", "April", "Mai", "Juni",
+                    "Juli", "August", "September", "Oktober", "November", "Dezember"
+                ]
+                ea_monat = ea_c2.selectbox(
+                    "Monat",
+                    options=range(1, 13),
+                    format_func=lambda m: monate_namen[m-1],
+                    index=int(curr.get("monat", 1)) - 1,
+                    key="ea_monat",
+                )
+
+                # Kategorie
+                leaves = [kat for kat in st.session_state.haushaltsbuch_kategorien if not kat.get("is_group")]
+                kat_optionen = [kat["name"] for kat in leaves] + ["Hauptebene", "— Neue Kategorie —"]
+                kat_ids = [kat["id"] for kat in leaves] + ["", "— Neue Kategorie —"]
+                
+                curr_kat_id = curr.get("kategorie", "")
+                if curr_kat_id in kat_ids:
+                    kat_idx = kat_ids.index(curr_kat_id)
+                else:
+                    matching_ids = [kat["id"] for kat in leaves if kat["name"] == curr_kat_id]
+                    if matching_ids:
+                        kat_idx = kat_ids.index(matching_ids[0])
+                    else:
+                        kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
+
+                ea_kat_sel = st.selectbox(
+                    "Kategorie",
+                    options=range(len(kat_optionen)),
+                    format_func=lambda idx: kat_optionen[idx],
+                    index=kat_idx,
+                    key="ea_kat_sel"
+                )
+                selected_kat_id = kat_ids[ea_kat_sel]
+                
+                if selected_kat_id == "— Neue Kategorie —":
+                    ea_kat = st.text_input(
+                        "Neue Kategorie",
+                        value=curr_kat_id if curr_kat_id not in kat_ids else "",
+                        key="ea_kat_new",
+                    )
+                else:
+                    ea_kat = selected_kat_id
+
+                ea_infl = st.checkbox(
+                    "Steigt mit Inflation",
+                    value=curr.get("inflationsgebunden", True),
+                    key="ea_infl",
+                )
+
+                eac1, eac2 = st.columns(2)
+                if eac1.button("💾 Speichern", key="ea_save"):
+                    if selected_kat_id == "— Neue Kategorie —":
+                        typed_name = ea_kat.strip() if ea_kat else ea_name.strip()
+                        existing = [k for k in st.session_state.haushaltsbuch_kategorien if k["name"].lower() == typed_name.lower()]
+                        if existing:
+                            final_kat_id = existing[0]["id"]
+                        else:
+                            import time
+                            new_id = f"kat_{int(time.time() * 1000)}"
+                            st.session_state.haushaltsbuch_kategorien.append({
+                                "id": new_id,
+                                "name": typed_name,
+                                "parent_id": None,
+                                "is_group": False,
+                                "betrag": 0.0,
+                                "rv_pct": 100
+                            })
+                            st.session_state[f"c_{new_id}"] = 0.0
+                            st.session_state[f"a_{new_id}"] = 100
+                            final_kat_id = new_id
+                    else:
+                        final_kat_id = selected_kat_id
+
+                    new_ea = {
+                        "name": ea_name,
+                        "betrag": ea_betrag,
+                        "jahr": ea_jahr,
+                        "monat": ea_monat,
+                        "kategorie": final_kat_id,
+                        "inflationsgebunden": ea_infl,
+                    }
+                    if is_edit:
+                        st.session_state.einmalige_ausgaben[
+                            st.session_state.ea_edit_idx
+                        ] = new_ea
+                    else:
+                        st.session_state.einmalige_ausgaben.append(new_ea)
+                    st.session_state.ea_edit_idx, st.session_state.ea_show_add = (
+                        None,
                         False,
                     )
                     st.session_state.global_rerun = True
-                if col3.button("🗑️", key=f"ba_d_{i}"):
-                    st.session_state.befristete_ausgaben.pop(i)
+                    st.rerun()
+                if eac2.button("❌ Abbrechen", key="ea_cancel"):
+                    st.session_state.ea_edit_idx, st.session_state.ea_show_add = (
+                        None,
+                        False,
+                    )
                     st.session_state.global_rerun = True
+                    st.rerun()
 
-        # Dynamische Kategorien: aus befristeten Ausgaben neue Kategorien sammeln
+            # Auflistung befristete Ausgaben
+            if st.session_state.befristete_ausgaben:
+                st.markdown("**Befristete Ausgaben:**")
+                for i, ba in enumerate(st.session_state.befristete_ausgaben):
+                    col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+                    kat_id = ba.get("kategorie", "")
+                    kat_display = id_to_name.get(kat_id, kat_id) if kat_id else "Hauptebene"
+                    col1.write(
+                        f"⏱️ **{ba['name']}** ({kat_display})\n{ba['betrag_mtl']:.0f}€/mtl. ({ba['start']} - {ba['ende']})"
+                    )
+                    if col2.button("✏️", key=f"ba_e_{i}"):
+                        st.session_state.ba_edit_idx, st.session_state.ba_show_add = (
+                            i,
+                            False,
+                        )
+                        st.session_state.global_rerun = True
+                        st.rerun()
+                    if col3.button("🗑️", key=f"ba_d_{i}"):
+                        st.session_state.befristete_ausgaben.pop(i)
+                        st.session_state.global_rerun = True
+                        st.rerun()
+
+            # Auflistung einmalige Ausgaben
+            if st.session_state.einmalige_ausgaben:
+                st.markdown("**Einmalige Ausgaben:**")
+                monate_namen = [
+                    "Januar", "Februar", "März", "April", "Mai", "Juni",
+                    "Juli", "August", "September", "Oktober", "November", "Dezember"
+                ]
+                for i, ea in enumerate(st.session_state.einmalige_ausgaben):
+                    col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+                    kat_id = ea.get("kategorie", "")
+                    kat_display = id_to_name.get(kat_id, kat_id) if kat_id else "Hauptebene"
+                    monat_idx = int(ea.get("monat", 1))
+                    monat_str = monate_namen[monat_idx - 1]
+                    col1.write(
+                        f"📅 **{ea['name']}** ({kat_display})\n{ea['betrag']:.0f}€ im {monat_str} {ea['jahr']}"
+                    )
+                    if col2.button("✏️", key=f"ea_e_{i}"):
+                        st.session_state.ea_edit_idx, st.session_state.ea_show_add = (
+                            i,
+                            False,
+                        )
+                        st.session_state.global_rerun = True
+                        st.rerun()
+                    if col3.button("🗑️", key=f"ea_d_{i}"):
+                        st.session_state.einmalige_ausgaben.pop(i)
+                        st.session_state.global_rerun = True
+                        st.rerun()
+
+        # Dynamische Kategorien: aus befristeten Ausgaben und Einmalausgaben neue Kategorien sammeln
         alle_kategorien = list(ausgaben_kategorien)
         for ba in st.session_state.befristete_ausgaben:
             kat = ba.get("kategorie", ba["name"])
@@ -1313,6 +1496,7 @@ def render_sidebar():
             "liquidity_reserve": liq_reserve,
             "liquidity_yield": liq_yield,
             "befristete_ausgaben": st.session_state.befristete_ausgaben,
+            "einmalige_ausgaben": st.session_state.einmalige_ausgaben,
             "assets": st.session_state.assets,
             "haushaltsbuch_kategorien": st.session_state.haushaltsbuch_kategorien,
         }

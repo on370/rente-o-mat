@@ -1,6 +1,6 @@
 VERSION = "0.1"
 STAGE = "[BETA]"
-BUILD_ID = "009F" # Collapsible budget categories and compact gear popovers layout
+BUILD_ID = "00A0" # Introduced month-specific once-off expenses (Einmalige Ausgaben) using Option A
 
 # Aktueller Rentenwert (einheitlich West/Ost seit Juli 2024)
 RENTENWERT_AKTUELL = 39.32

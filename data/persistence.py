@@ -97,6 +97,10 @@ def import_settings(json_file):
                 st.session_state.befristete_ausgaben = data["befristete_ausgaben"]
             if "assets" in data:
                 st.session_state.assets = data["assets"]
+            if "einmalige_ausgaben" in data:
+                st.session_state.einmalige_ausgaben = data["einmalige_ausgaben"]
+            else:
+                st.session_state.einmalige_ausgaben = []
 
             return True
         except Exception as e:

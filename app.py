@@ -127,6 +127,16 @@ def capture_charts_for_pdf(p, df_timeline):
         id_to_parent = {
             kat["id"]: kat["parent_id"] for kat in p.get("haushaltsbuch_kategorien", [])
         }
+        group_names = {
+            kat["name"]
+            for kat in p.get("haushaltsbuch_kategorien", [])
+            if kat.get("is_group")
+        }
+        leaf_names = {
+            kat["name"]
+            for kat in p.get("haushaltsbuch_kategorien", [])
+            if not kat.get("is_group")
+        }
 
         a_sq_sum = sum(p["ausgaben_input"].values())
         d_sq = p["aktuelles_netto"] - a_sq_sum
@@ -149,8 +159,9 @@ def capture_charts_for_pdf(p, df_timeline):
                 parent_id = id_to_parent.get(k)
                 name = id_to_name.get(k, k)
                 if parent_id:
-                    parent_name = id_to_name.get(parent_id, parent_id)
-                    add_sq(parent_name, name, v)
+                    if not st.session_state.get(f"collapsed_{parent_id}", False):
+                        parent_name = id_to_name.get(parent_id, parent_id)
+                        add_sq(parent_name, name, v)
                 else:
                     add_sq("Haushalts-Budget", name, v)
 
@@ -160,7 +171,14 @@ def capture_charts_for_pdf(p, df_timeline):
                 add_sq("Haushalts-Budget", g_name, g_sum)
 
         fig_sq = create_sankey(
-            sq_labels, sq_sources, sq_targets, sq_values, "Aktueller Cashflow", True
+            sq_labels,
+            sq_sources,
+            sq_targets,
+            sq_values,
+            "Aktueller Cashflow",
+            True,
+            group_names,
+            leaf_names,
         )
         charts["sankey_aktiv"] = fig_sq.to_image(format="png", width=1000, height=500)
 
@@ -236,6 +254,8 @@ def capture_charts_for_pdf(p, df_timeline):
                 v_r,
                 f"Cashflow im 1. Rentenjahr ({int(res['Jahr'])})",
                 True,
+                group_names,
+                leaf_names,
             )
             charts["sankey_rente"] = fig_r.to_image(
                 format="png", width=1000, height=500
@@ -273,7 +293,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
 with tab1:
     # 1. STATUS QUO CONTAINER
     with st.container(border=True):
-        st.subheader("📊 1. Status Quo (Aktivphase Heute)")
+        st.subheader(
+            "📊 1. Status Quo (Aktivphase Heute)",
+            help="Tipp: Sammelkategorien (Gruppen) können in der Sidebar über die Pfeile (▶/▼) eingeklappt werden, um die Darstellung im Sankey-Diagramm zu vereinfachen.",
+        )
         sq_labels, sq_sources, sq_targets, sq_values = [], [], [], []
 
         def add_sq(s, t, v):
@@ -292,6 +315,16 @@ with tab1:
         }
         id_to_parent = {
             kat["id"]: kat["parent_id"] for kat in p.get("haushaltsbuch_kategorien", [])
+        }
+        group_names = {
+            kat["name"]
+            for kat in p.get("haushaltsbuch_kategorien", [])
+            if kat.get("is_group")
+        }
+        leaf_names = {
+            kat["name"]
+            for kat in p.get("haushaltsbuch_kategorien", [])
+            if not kat.get("is_group")
         }
 
         a_sq_sum = sum(p["ausgaben_input"].values())
@@ -315,8 +348,9 @@ with tab1:
                 parent_id = id_to_parent.get(k)
                 name = id_to_name.get(k, k)
                 if parent_id:
-                    parent_name = id_to_name.get(parent_id, parent_id)
-                    add_sq(parent_name, name, v)
+                    if not st.session_state.get(f"collapsed_{parent_id}", False):
+                        parent_name = id_to_name.get(parent_id, parent_id)
+                        add_sq(parent_name, name, v)
                 else:
                     add_sq("Haushalts-Budget", name, v)
 
@@ -333,6 +367,8 @@ with tab1:
                 sq_values,
                 "Aktueller Cashflow",
                 p["show_values"],
+                group_names,
+                leaf_names,
             ),
             width="stretch",
         )
@@ -367,7 +403,10 @@ with tab1:
 
     # 2. SIMULATIONS CONTAINER
     with st.container(border=True):
-        st.subheader("🎯 2. Simulations-Analyse")
+        st.subheader(
+            "🎯 2. Simulations-Analyse",
+            help="Tipp: Sammelkategorien (Gruppen) können in der Sidebar über die Pfeile (▶/▼) eingeklappt werden, um die Darstellung im Sankey-Diagramm zu vereinfachen.",
+        )
 
         # Zeitstrahl-Navigation direkt hier
         slider_options = df_timeline["Label"].tolist()
@@ -569,6 +608,16 @@ with tab1:
         id_to_parent = {
             kat["id"]: kat["parent_id"] for kat in p.get("haushaltsbuch_kategorien", [])
         }
+        group_names = {
+            kat["name"]
+            for kat in p.get("haushaltsbuch_kategorien", [])
+            if kat.get("is_group")
+        }
+        leaf_names = {
+            kat["name"]
+            for kat in p.get("haushaltsbuch_kategorien", [])
+            if not kat.get("is_group")
+        }
 
         # Calculate dynamic group sums for the active year in 'res'
         group_sums = {}
@@ -585,8 +634,9 @@ with tab1:
                 parent_id = id_to_parent.get(k)
                 name = id_to_name.get(k, k)
                 if parent_id:
-                    parent_name = id_to_name.get(parent_id, parent_id)
-                    add_r(parent_name, name, val)
+                    if not st.session_state.get(f"collapsed_{parent_id}", False):
+                        parent_name = id_to_name.get(parent_id, parent_id)
+                        add_r(parent_name, name, val)
                 else:
                     add_r("Verfügbares Budget", name, val)
 
@@ -603,6 +653,8 @@ with tab1:
                 v_r,
                 f"Cashflow Simulation {selected_label}",
                 p["show_values"],
+                group_names,
+                leaf_names,
             ),
             width="stretch",
         )
@@ -862,13 +914,15 @@ with tab5:
             st.info("Simulation erreicht kein Rentenjahr.")
 
     with st.expander("🛒 Deine Ausgaben (Budget & Planung)"):
-        st.markdown("**Übersicht über dein Haushaltsbuch und geplante Zusatzausgaben.**")
-        
+        st.markdown(
+            "**Übersicht über dein Haushaltsbuch und geplante Zusatzausgaben.**"
+        )
+
         # 1. Haushaltsbuch (Kategorien)
         st.markdown("##### 📦 Monatliches Haushaltsbuch (Laufende Lebenshaltung)")
         total_erwerb = 0.0
         total_ruhestand = 0.0
-        
+
         haushaltsbuch_rows = []
         for kat in st.session_state.get("haushaltsbuch_kategorien", []):
             if not kat.get("is_group"):
@@ -876,18 +930,36 @@ with tab5:
                 betrag = float(kat.get("betrag", 0.0))
                 rv_pct = int(kat.get("rv_pct", 100))
                 betrag_rente = betrag * rv_pct / 100.0
-                
+
                 total_erwerb += betrag
                 total_ruhestand += betrag_rente
-                
-                f_betrag = f"{betrag:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-                f_betrag_rente = f"{betrag_rente:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-                
-                haushaltsbuch_rows.append(f"| {name} | {f_betrag} | {rv_pct} % | {f_betrag_rente} |")
-                
-        f_total_erwerb = f"{total_erwerb:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-        f_total_ruhestand = f"{total_ruhestand:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-        
+
+                f_betrag = (
+                    f"{betrag:,.2f} €".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+                f_betrag_rente = (
+                    f"{betrag_rente:,.2f} €".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+
+                haushaltsbuch_rows.append(
+                    f"| {name} | {f_betrag} | {rv_pct} % | {f_betrag_rente} |"
+                )
+
+        f_total_erwerb = (
+            f"{total_erwerb:,.2f} €".replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+        f_total_ruhestand = (
+            f"{total_ruhestand:,.2f} €".replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+
         hb_table = f"""
 | Kategorie | Erwerbsleben (100% mtl.) | Anteil im Ruhestand | Ruhestand (mtl. prognostiziert) |
 | :--- | :--- | :--- | :--- |
@@ -895,7 +967,7 @@ with tab5:
 | **Summe (monatlich)** | **{f_total_erwerb}** | **-** | **{f_total_ruhestand}** |
 """
         st.markdown(hb_table)
-        
+
         # 2. Befristete Ausgaben
         ba_list = st.session_state.get("befristete_ausgaben", [])
         if ba_list:
@@ -907,25 +979,41 @@ with tab5:
                 betrag_mtl = float(ba.get("betrag_mtl", 0.0))
                 start = ba.get("start", 2026)
                 ende = ba.get("ende", 2030)
-                
-                f_betrag_mtl = f"{betrag_mtl:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-                befristete_rows.append(f"| {name} | {f_betrag_mtl} mtl. | {start} - {ende} |")
-                
+
+                f_betrag_mtl = (
+                    f"{betrag_mtl:,.2f} €".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+                befristete_rows.append(
+                    f"| {name} | {f_betrag_mtl} mtl. | {start} - {ende} |"
+                )
+
             ba_table = f"""
 | Beschreibung / Name | Betrag | Planungszeitraum (Jahre) |
 | :--- | :--- | :--- |
 {chr(10).join(befristete_rows)}
 """
             st.markdown(ba_table)
-            
+
         # 3. Einmalige Ausgaben
         ea_list = st.session_state.get("einmalige_ausgaben", [])
         if ea_list:
             st.write("")
             st.markdown("##### 📅 Einmalige Sonderausgaben (Planungsdaten)")
             monate_namen = [
-                "Januar", "Februar", "März", "April", "Mai", "Juni",
-                "Juli", "August", "September", "Oktober", "November", "Dezember"
+                "Januar",
+                "Februar",
+                "März",
+                "April",
+                "Mai",
+                "Juni",
+                "Juli",
+                "August",
+                "September",
+                "Oktober",
+                "November",
+                "Dezember",
             ]
             einmalige_rows = []
             for ea in ea_list:
@@ -934,10 +1022,16 @@ with tab5:
                 jahr = int(ea.get("jahr", 2026))
                 monat = int(ea.get("monat", 1))
                 monat_str = monate_namen[monat - 1]
-                
-                f_betrag = f"{betrag:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
-                einmalige_rows.append(f"| {name} | {f_betrag} (einmalig) | {monat_str} {jahr} |")
-                
+
+                f_betrag = (
+                    f"{betrag:,.2f} €".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+                einmalige_rows.append(
+                    f"| {name} | {f_betrag} (einmalig) | {monat_str} {jahr} |"
+                )
+
             ea_table = f"""
 | Beschreibung / Name | Betrag | Fälligkeit |
 | :--- | :--- | :--- |
@@ -989,27 +1083,44 @@ with tab5:
         # Chronologische Timeline aufbauen
         timeline_items = []
         timeline_items.append(
-            (float(p["aktuelles_jahr"]), f"Start der Simulation: <b>Januar {p['aktuelles_jahr']}</b>")
+            (
+                float(p["aktuelles_jahr"]),
+                f"Start der Simulation: <b>Januar {p['aktuelles_jahr']}</b>",
+            )
         )
 
         if p.get("atz_simulieren"):
             atz_mitte = p["atz_start"] + (p["atz_dauer"] / 2)
             timeline_items.append(
-                (float(p["atz_start"]), f"Beginn der Altersteilzeit (ATZ-Aktiv): <b>{fmt_jahr_monat_de(p['atz_start'])}</b>")
+                (
+                    float(p["atz_start"]),
+                    f"Beginn der Altersteilzeit (ATZ-Aktiv): <b>{fmt_jahr_monat_de(p['atz_start'])}</b>",
+                )
             )
             timeline_items.append(
-                (float(atz_mitte), f"Wechsel in die Freistellungsphase (ATZ-Passiv): <b>{fmt_jahr_monat_de(atz_mitte)}</b>")
+                (
+                    float(atz_mitte),
+                    f"Wechsel in die Freistellungsphase (ATZ-Passiv): <b>{fmt_jahr_monat_de(atz_mitte)}</b>",
+                )
             )
 
         timeline_items.append(
-            (float(p["rentenbeginn"]), f"Renteneintritt: <b>{fmt_jahr_monat_de(p['rentenbeginn'])}</b>")
+            (
+                float(p["rentenbeginn"]),
+                f"Renteneintritt: <b>{fmt_jahr_monat_de(p['rentenbeginn'])}</b>",
+            )
         )
 
         # Weitere Einkünfte
         for e in p.get("einnahmen", []):
-            if float(e["start"]) > float(p["aktuelles_jahr"]) and float(e["start"]) != float(p["rentenbeginn"]):
+            if float(e["start"]) > float(p["aktuelles_jahr"]) and float(
+                e["start"]
+            ) != float(p["rentenbeginn"]):
                 timeline_items.append(
-                    (float(e["start"]), f"Start der Auszahlung von {e['name']}: <b>{fmt_jahr_monat_de(e['start'])}</b> ({e['betrag']:,.2f} € mtl.)")
+                    (
+                        float(e["start"]),
+                        f"Start der Auszahlung von {e['name']}: <b>{fmt_jahr_monat_de(e['start'])}</b> ({e['betrag']:,.2f} € mtl.)",
+                    )
                 )
 
         # Einmalige Sonderausgaben
@@ -1017,7 +1128,10 @@ with tab5:
             t_event = float(ea["jahr"]) + (int(ea.get("monat", 1)) - 1) / 12
             if t_event >= float(p["aktuelles_jahr"]):
                 timeline_items.append(
-                    (t_event, f"Einmalige Sonderausgabe '{ea['name']}': <b>{fmt_jahr_monat_de(t_event)}</b> ({ea['betrag']:,.2f} €)")
+                    (
+                        t_event,
+                        f"Einmalige Sonderausgabe '{ea['name']}': <b>{fmt_jahr_monat_de(t_event)}</b> ({ea['betrag']:,.2f} €)",
+                    )
                 )
 
         # Sortieren nach Zeitpunkt
@@ -1026,11 +1140,170 @@ with tab5:
         timeline_html = "<ul>"
         for t_val, t_desc in timeline_items:
             # Währungswerte formatieren (. -> , und X -> .)
-            formatted_desc = t_desc.replace(",", "X").replace(".", ",").replace("X", ".")
+            formatted_desc = (
+                t_desc.replace(",", "X").replace(".", ",").replace("X", ".")
+            )
             timeline_html += f"<li>{formatted_desc}</li>"
         timeline_html += "</ul>"
 
         st.markdown(timeline_html, unsafe_allow_html=True)
+
+    with st.expander("💸 Deine Entnahmen & Rentenbezug (Was/Wann/Bei wem?)"):
+        st.markdown(
+            "**Praktischer Leitfaden zur Auszahlung deiner Renten, Versicherungen und Depots.**"
+        )
+
+        entnahmen_data = []
+        from logic.pdf_export import fmt_jahr_monat_de
+
+        # 1. Gesetzliche Renten und sonstige Einnahmen aus st.session_state.einnahmen
+        for e in st.session_state.get("einnahmen", []):
+            name = e.get("name", "Unbenannte Einnahme")
+            typ = e.get("typ", "Sonstige")
+            start_t = float(e.get("start", p["rentenbeginn"]))
+            ende_t = float(e.get("ende", p["rentenbeginn"] + 30))
+            betrag_start = float(e.get("betrag", 0.0))
+
+            # Antragsfrist und Ansprechpartner bestimmen
+            if typ == "Gesetzlich":
+                frist = "⏱️ **Dringend 3 Monate vor Rentenbeginn** beantragen (Säumigkeit verzögert die Auszahlung, Nachzahlung rückwirkend max. 3 Monate)."
+                wo = "🏢 **Deutsche Rentenversicherung (DRV)** (online unter deutsche-rentenversicherung.de oder per Post)."
+                bemerkung = (
+                    "Wird voll nachgelagert besteuert. Beitragspflichtig in KV/PV."
+                )
+            elif typ == "bAV":
+                frist = "⏱️ **3 bis 6 Monate vor Rentenbeginn** (bzw. vor Ausscheiden aus dem Betrieb)."
+                wo = "🏢 **Letzter Arbeitgeber** (Personalabteilung) bzw. direkt beim Versorgungsträger (Direktversicherung/Pensionskasse)."
+                bemerkung = "Beitragspflichtig in KV/PV (187,25 € Freibetrag p.a. in 2025 gilt einmalig). Voll steuerpflichtig."
+            elif typ == "Private Rente" or "versicherung" in name.lower():
+                frist = "⏱️ **3 bis 6 Monate vor Rentenbeginn** (zur Prüfung der Verrentung vs. einmalige Kapitalabfindung)."
+                wo = "🏢 **Versicherungsgesellschaft** (Einreichung der Police und Rentenantrag)."
+                bemerkung = "Besteuerung nach Ertragsanteil (abhängig vom Alter bei Rentenbeginn). Meist beitragsfrei in KV/PV (außer bei freiwillig Versicherten)."
+            else:
+                frist = "⏱️ **1 bis 2 Monate vorher** zwecks Klärung von Fristen."
+                wo = "🏢 **Auszahlende Stelle / Vertragspartner**."
+                bemerkung = "Individuelle Besteuerung."
+
+            # Finde tatsächlichen maximalen Wert im Startjahr der Timeline falls vorhanden
+            start_jahr_int = int(start_t)
+            timeline_rows = df_timeline[df_timeline["Jahr"] == start_jahr_int]
+            est_val = 0.0
+            if not timeline_rows.empty:
+                est_val = timeline_rows[name].max()
+
+            if est_val > 0.1:
+                f_est_val = (
+                    f"{est_val:,.2f} €".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+                betrag_str = (
+                    f"**{f_est_val}** mtl. (prognostiziert ab {start_jahr_int})"
+                )
+            else:
+                f_nominal = (
+                    f"{betrag_start:,.2f} €".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+                betrag_str = f"**{f_nominal}** mtl. (nominaler Startbetrag)"
+
+            entnahmen_data.append(
+                {
+                    "Beginn": fmt_jahr_monat_de(start_t),
+                    "Was / Typ": name,
+                    "TypName": typ,
+                    "Wann (Zeitraum)": f"{fmt_jahr_monat_de(start_t)} bis {fmt_jahr_monat_de(ende_t)}",
+                    "Höhe (mtl.)": betrag_str,
+                    "Antragsfrist / To-Do": frist,
+                    "Wo beantragen / beauftragen": wo,
+                    "Hinweis": bemerkung,
+                }
+            )
+
+        # 2. Assets (Depot-Entnahmepläne)
+        for a in st.session_state.get("assets", []):
+            if a.get("entnahme_aktiv"):
+                name = a.get("name", "Welt-ETF")
+                start_jahr = int(a.get("entnahme_start", p["aktuelles_jahr"]))
+                ende_jahr = int(a.get("entnahme_ende", start_jahr + 10))
+                modus = a.get("entnahme_modus", "fix")
+                betrag_mtl = float(a.get("entnahme_betrag_mtl", 0.0))
+
+                frist = "⏱️ **1 bis 2 Monate vor Beginn** einrichten (Prüfung der optimalen Auszahlungsstrategie)."
+                wo = "🏦 **Depotführende Bank / Online-Broker** (Einrichtung eines automatischen Entnahmeplans oder manueller Verkauf)."
+
+                steuertyp = a.get("steuertyp", "abgeltung")
+                if steuertyp == "abgeltung":
+                    steuer_desc = "Abgeltungsteuer (25% + Soli + KiSt) auf Gewinne."
+                elif steuertyp == "teilfreistellung":
+                    tfs = a.get("teilfreistellung_pct", 30.0)
+                    steuer_desc = (
+                        f"Teilfreigestellt ({tfs}% steuerfrei), Rest Abgeltungsteuer."
+                    )
+                else:
+                    steuer_desc = "Steuerfrei."
+
+                val_key = f"Entnahme: {name}"
+                est_val = 0.0
+                timeline_rows = df_timeline[df_timeline["Jahr"] == start_jahr]
+                if not timeline_rows.empty and val_key in timeline_rows.columns:
+                    est_val = timeline_rows[val_key].max()
+
+                if modus == "fix":
+                    f_betrag = (
+                        f"{betrag_mtl:,.2f} €".replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
+                    betrag_str = f"**{f_betrag}** mtl. (Feste Entnahme)"
+                else:
+                    if est_val > 0.1:
+                        f_est_val = (
+                            f"{est_val:,.2f} €".replace(",", "X")
+                            .replace(".", ",")
+                            .replace("X", ".")
+                        )
+                        betrag_str = f"**{f_est_val}** mtl. (Kapitalverzehr, variiert ab {start_jahr})"
+                    else:
+                        betrag_str = (
+                            f"Dynamisch berechnet (Kapitalverzehr bis {ende_jahr})"
+                        )
+
+                entnahmen_data.append(
+                    {
+                        "Beginn": f"Januar {start_jahr}",
+                        "Was / Typ": name,
+                        "TypName": "Depot-Entnahme",
+                        "Wann (Zeitraum)": f"Januar {start_jahr} bis Dezember {ende_jahr}",
+                        "Höhe (mtl.)": betrag_str,
+                        "Antragsfrist / To-Do": frist,
+                        "Wo beantragen / beauftragen": wo,
+                        "Hinweis": f"{steuer_desc} Depot-Entnahmen fallen nicht unter die gesetzliche Renten-KV/PV.",
+                    }
+                )
+
+        if entnahmen_data:
+            for item in entnahmen_data:
+                c1, c2, c3 = st.columns([0.14, 0.48, 0.38])
+                with c1:
+                    st.markdown(f"#### {item['Beginn']}")
+                with c2:
+                    st.markdown(f"#### 💸 {item['Was / Typ']} ({item['TypName']})")
+                    st.markdown(f"**Zeitraum:** Ab {item['Wann (Zeitraum)']}")
+                    st.markdown(f"**Auszahlungsbetrag:** {item['Höhe (mtl.)']}")
+                    st.markdown(f"*Hinweis zur Besteuerung/Abgaben:* {item['Hinweis']}")
+                with c3:
+                    st.markdown(f"{item['Antragsfrist / To-Do']}")
+                    st.markdown(
+                        f"📍 **Beantragen bei:**\n{item['Wo beantragen / beauftragen']}"
+                    )
+
+                st.divider()
+        else:
+            st.info(
+                "Es sind keine Renten oder Depot-Entnahmepläne in der Simulation aktiv."
+            )
 
     with st.expander("⚙️ Szenario-Parameter & Rechtliches"):
         st.markdown("**Alle getroffenen Annahmen und gesetzlichen Grundlagen.**")
@@ -1139,14 +1412,16 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
         st.markdown(
             "**100% Transparenz.** Hier findest du den originalen Python-Code, der exakt in diesem Moment in unseren fachlichen Rechenkernen und Modulen läuft. Du kannst ihn kopieren und unsere Mathematik verifizieren."
         )
-        
-        tab_engine, tab_taxes, tab_sv, tab_renten = st.tabs([
-            "🖥️ Engine (engine.py)",
-            "⚖️ Einkommensteuer (taxes.py)",
-            "🏥 Sozialversicherung (sozialversicherung.py)",
-            "👴 Rentenrecht (rentenrecht.py)"
-        ])
-        
+
+        tab_engine, tab_taxes, tab_sv, tab_renten = st.tabs(
+            [
+                "🖥️ Engine (engine.py)",
+                "⚖️ Einkommensteuer (taxes.py)",
+                "🏥 Sozialversicherung (sozialversicherung.py)",
+                "👴 Rentenrecht (rentenrecht.py)",
+            ]
+        )
+
         with tab_engine:
             try:
                 with open("logic/engine.py", "r", encoding="utf-8") as f:
@@ -1154,7 +1429,7 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
                 st.code(code_content, language="python")
             except Exception as e:
                 st.error(f"Konnte engine.py nicht laden: {e}")
-                
+
         with tab_taxes:
             try:
                 with open("logic/taxes.py", "r", encoding="utf-8") as f:
@@ -1162,7 +1437,7 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
                 st.code(code_content, language="python")
             except Exception as e:
                 st.error(f"Konnte taxes.py nicht laden: {e}")
-                
+
         with tab_sv:
             try:
                 with open("logic/sozialversicherung.py", "r", encoding="utf-8") as f:
@@ -1170,7 +1445,7 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
                 st.code(code_content, language="python")
             except Exception as e:
                 st.error(f"Konnte sozialversicherung.py nicht laden: {e}")
-                
+
         with tab_renten:
             try:
                 with open("logic/rentenrecht.py", "r", encoding="utf-8") as f:

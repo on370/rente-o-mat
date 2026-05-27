@@ -881,13 +881,91 @@ def render_sidebar():
                 else:
                     top_level_items.append(kat)
 
-            # Loop to render
-            for item in top_level_items:
-                if item.get("is_group"):
-                    # Group rendering
+            # Separate top level categories (main level) and groups (Sammelkategorien)
+            main_level_categories = [item for item in top_level_items if not item.get("is_group")]
+            group_categories = [item for item in top_level_items if item.get("is_group")]
+
+            # 1. Render all main level categories first
+            for item in main_level_categories:
+                # Top-level leaf rendering
+                # Header: Name next to settings gear
+                c_lbl, c_gear = st.columns([0.85, 0.15])
+                c_lbl.markdown(f"**{item['name']}**")
+                with c_gear:
+                    with st.popover("⚙️", key=f"opt_{item['id']}_{st.session_state.uploader_id}"):
+                        st.markdown("**Kategorie-Optionen**")
+                        # Rename
+                        new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}_{st.session_state.uploader_id}")
+                        if new_name != item["name"] and new_name.strip():
+                            cleaned_name = new_name.strip()
+                            if any(k["name"].lower() == cleaned_name.lower() and k["id"] != item["id"] for k in st.session_state.haushaltsbuch_kategorien):
+                                st.error("Name existiert bereits!")
+                            else:
+                                item["name"] = cleaned_name
+                                st.session_state.global_rerun = True
+                                st.rerun()
+                        # Move parent group
+                        p_options = ["— Hauptebene —"] + [g["name"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                        p_ids = [None] + [g["id"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
+                        curr_pid = item.get("parent_id")
+                        curr_idx = p_ids.index(curr_pid) if curr_pid in p_ids else 0
+                        sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{item['id']}_{st.session_state.uploader_id}")
+                        new_pid = p_ids[sel_p]
+                        if new_pid != curr_pid:
+                            item["parent_id"] = new_pid
+                            st.session_state.global_rerun = True
+                            st.rerun()
+                        # Delete
+                        if st.button("🗑️ Löschen", key=f"del_{item['id']}_{st.session_state.uploader_id}", use_container_width=True):
+                            st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != item["id"]]
+                            c_key = f"c_{item['id']}"
+                            a_key = f"a_{item['id']}"
+                            if c_key in st.session_state:
+                                del st.session_state[c_key]
+                            if a_key in st.session_state:
+                                del st.session_state[a_key]
+                            st.session_state.global_rerun = True
+                            st.rerun()
+                
+                # Inputs: side-by-side
+                c_val, c_sl = st.columns([0.5, 0.5])
+                c_val.number_input(
+                    "Betrag",
+                    min_value=0.0,
+                    key=f"c_{item['id']}",
+                    label_visibility="collapsed",
+                )
+                c_sl.slider(
+                    "RV%",
+                    0,
+                    200,
+                    key=f"a_{item['id']}",
+                    label_visibility="collapsed",
+                )
+
+            # 2. Render groups (Sammelkategorien) if present
+            if group_categories:
+                st.markdown("---") # Divider between main level and groups
+                
+                # Render "Alle Sammel-Kat." Button below the divider
+                for g in group_categories:
+                    col_key = f"collapsed_{g['id']}"
+                    if col_key not in st.session_state:
+                        st.session_state[col_key] = False
+                
+                any_expanded = any(not st.session_state[f"collapsed_{g['id']}"] for g in group_categories)
+                all_toggle_icon = "▼" if any_expanded else "▶"
+                if st.button(f"{all_toggle_icon} Alle Sammel-Kat.", key=f"toggle_all_groups_{st.session_state.uploader_id}", use_container_width=True):
+                    target_state = any_expanded
+                    for g in group_categories:
+                        st.session_state[f"collapsed_{g['id']}"] = target_state
+                    st.session_state.global_rerun = True
+                    st.rerun()
+                
+                # Loop to render Sammelkategorien
+                for item in group_categories:
                     g_sum = get_group_sum(item["id"])
                     
-                    # Collapse state management
                     col_key = f"collapsed_{item['id']}"
                     if col_key not in st.session_state:
                         st.session_state[col_key] = False
@@ -984,62 +1062,6 @@ def render_sidebar():
                                 label_visibility="collapsed",
                             )
                     st.markdown("---")
-                else:
-                    # Top-level leaf rendering
-                    # Header: Name next to settings gear
-                    c_lbl, c_gear = st.columns([0.85, 0.15])
-                    c_lbl.markdown(f"**{item['name']}**")
-                    with c_gear:
-                        with st.popover("⚙️", key=f"opt_{item['id']}_{st.session_state.uploader_id}"):
-                            st.markdown("**Kategorie-Optionen**")
-                            # Rename
-                            new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}_{st.session_state.uploader_id}")
-                            if new_name != item["name"] and new_name.strip():
-                                cleaned_name = new_name.strip()
-                                if any(k["name"].lower() == cleaned_name.lower() and k["id"] != item["id"] for k in st.session_state.haushaltsbuch_kategorien):
-                                    st.error("Name existiert bereits!")
-                                else:
-                                    item["name"] = cleaned_name
-                                    st.session_state.global_rerun = True
-                                    st.rerun()
-                            # Move parent group
-                            p_options = ["— Hauptebene —"] + [g["name"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
-                            p_ids = [None] + [g["id"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
-                            curr_pid = item.get("parent_id")
-                            curr_idx = p_ids.index(curr_pid) if curr_pid in p_ids else 0
-                            sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{item['id']}_{st.session_state.uploader_id}")
-                            new_pid = p_ids[sel_p]
-                            if new_pid != curr_pid:
-                                item["parent_id"] = new_pid
-                                st.session_state.global_rerun = True
-                                st.rerun()
-                            # Delete
-                            if st.button("🗑️ Löschen", key=f"del_{item['id']}_{st.session_state.uploader_id}", use_container_width=True):
-                                st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != item["id"]]
-                                c_key = f"c_{item['id']}"
-                                a_key = f"a_{item['id']}"
-                                if c_key in st.session_state:
-                                    del st.session_state[c_key]
-                                if a_key in st.session_state:
-                                    del st.session_state[a_key]
-                                st.session_state.global_rerun = True
-                                st.rerun()
-                    
-                    # Inputs: side-by-side
-                    c_val, c_sl = st.columns([0.5, 0.5])
-                    c_val.number_input(
-                        "Betrag",
-                        min_value=0.0,
-                        key=f"c_{item['id']}",
-                        label_visibility="collapsed",
-                    )
-                    c_sl.slider(
-                        "RV%",
-                        0,
-                        200,
-                        key=f"a_{item['id']}",
-                        label_visibility="collapsed",
-                    )
 
             st.markdown("<br>", unsafe_allow_html=True)
             col_btn1, col_btn2 = st.columns(2)

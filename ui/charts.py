@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-def create_sankey(labels, sources, targets, values, title, show_vals=True):
+def create_sankey(labels, sources, targets, values, title, show_vals=True, group_names=None, leaf_names=None):
     """
     Erstellt ein professionelles Sankey-Diagramm mit dynamischer Farbgebung.
     Unterstützt jetzt auch spezifische Knoten für Soli und KiSt.
@@ -22,6 +22,10 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True):
             node_colors.append("#CB4335") # Kräftiges Rot
         elif "steuer" in low_label or "soli" in low_label or "kist" in low_label or "abgaben" in low_label:
             node_colors.append("#E74C3C") # Etwas helleres Rot für Steuern/Abgaben
+        elif leaf_names and label in leaf_names:
+            node_colors.append("#9467bd") # Premium Violett für Endkategorien
+        elif group_names and label in group_names:
+            node_colors.append("#2E86C1") # Standard Blau für Sammelkategorien
         else:
             node_colors.append("#2E86C1") # Standard Blau
 

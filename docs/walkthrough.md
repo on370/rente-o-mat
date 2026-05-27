@@ -132,5 +132,58 @@ Die Basis ist damit grundsolide. Für eine zukünftige Iteration stehen dann Fea
 - **Resultat:** Das Streamlit-Frontend findet keinen alten Zustand für diese Schlüssel vor, verwirft alle veralteten Browser-Widget-Zustände vollständig und zeichnet das gesamte Optionen-Menü (Name bearbeiten und Gruppenwahl) absolut korrekt mit den frisch geladenen Profildaten neu.
 - **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00AD"` angehoben.
 
+## 16. Kollabierbare Nodes in den Sankey-Diagrammen (Build 00AE)
+- **Innovative Synchronisation:** Wir haben den einklappbaren Zustand (Falten) der Sammelkategorien aus der Sidebar direkt mit dem Render-Verhalten der Sankey-Diagramme verknüpft (betrifft den Status Quo, die Simulation und den PDF-Export).
+- **Verhalten beim Einklappen (▶):** Sobald du eine Sammelkategorie in der Sidebar einklappst, wird der Fluss im Sankey-Diagramm von diesem Gruppenknoten zu den jeweiligen Unterkategorien komplett ausgeblendet. Der Gruppenknoten (z. B. 📁 `"Wohnen"`) wird im Diagramm somit zum sauberen Endknoten, der das gesamte Budget der Gruppe akkumuliert darstellt.
+- **Verhalten beim Ausklappen (▼):** Klappst du die Gruppe in der Sidebar wieder aus, verzweigt sich der Fluss im Sankey-Diagramm sofort wieder detailreich zu allen einzelnen Unterkategorien (wie `"Miete"`, `"Hausratsversicherung"` etc.).
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00AE"` angehoben.
+
+## 17. Sankey Hover-Hilfe & farbliche Differenzierung (Build 00AF)
+- **Sankey Hover-Hilfe:** Über beiden Sankey-Diagrammen (Status Quo und Simulations-Analyse) wurde in den UI-Subheadern ein Hilfe-Symbol (`(?)` / Tooltip) ergänzt. Dieses informiert den Nutzer leicht verständlich darüber, dass Sammelkategorien (Gruppen) in der Sidebar über die Pfeile (▶/▼) ein- bzw. ausgeklappt werden können, um die Komplexität im Sankey-Diagramm flexibel zu steuern.
+- **Farbliche Trennung von End- und Sammelkategorien:** 
+  - **Endkategorien (Unterkategorien):** Werden nun im Sankey-Diagramm in einem ansprechenden Premium-Violett (`#9467bd`) dargestellt.
+  - **Sammelkategorien (Gruppen):** Bleiben in dem bewährten Standard-Blau (`#2E86C1`) erhalten.
+  - **Systemknoten:** Alle Systemknoten wie Steuern, Abgaben, Netto, Brutto, Überschüsse und Defizite behalten ihre semantisch präzisen Sonderfarben (grün/rot/etc.) bei.
+- **Konsistenz im PDF-Report:** Die farbliche Trennung zwischen Endkategorien (violett) und Gruppen (blau) wird vollautomatisch auch auf die im PDF-Report exportierten Sankey-Diagramme angewendet.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00AF"` angehoben.
+
+## 18. Sektion "Entnahmen & Rentenbezug" im Briefing-Tab (Build 00B0)
+- **Komplette Übersicht:** Im Briefing-Tab wurde ein neuer, einklappbarer Bereich `"💸 Deine Entnahmen & Rentenbezug (Was/Wann/Bei wem?)"` direkt unter den "🛒 Ausgaben" hinzugefügt.
+- **Detaillierte Informationen:**
+  - **Gesetzliche Rente (GRV):** Zeigt den Bezugszeitraum (z.B. ab Juli 2032), den dynamisch prognostizierten monatlichen Rentenwert und gibt wichtige Hinweise zum Rentenantrag (⏱️ Frist: 3 Monate vor Rentenbeginn, Beantragung bei der Deutschen Rentenversicherung).
+  - **Betriebliche Altersvorsorge (bAV):** Zeigt den monatlichen Auszahlungsbetrag, Zeitraum sowie Hinweise zur Beantragung (⏱️ Frist: 3 bis 6 Monate vorher beim Arbeitgeber/Versorgungsträger) und steuerlichen Abwicklung (Voll steuerpflichtig + KV/PV-pflichtig mit Freibetrag).
+  - **Private Rentenversicherungen:** Informiert über den Beginn, Ertragsanteilsbesteuerung und die Frist zur Wahl zwischen Einmalzahlung und monatlicher Rente (⏱️ Frist: 3 bis 6 Monate vorher bei der Versicherung).
+  - **Depot-Entnahmepläne (ETFs):** Aggregiert alle aktivierten Asset-Entnahmen. Zeigt an, ob es sich um eine feste Entnahme oder einen variablen Kapitalverzehr handelt. Berechnet den monatlichen Entnahmebetrag im Startjahr aus der Timeline und gibt praktische Hinweise (⏱️ Frist: 1 bis 2 Monate vorher beim Online-Broker einrichten).
+- **Zweispaltiges Layout:** Alle Einträge sind in übersichtlichen, zweispaltigen Zeilen (links: Was/Wann/Wie viel, rechts: To-Do/Frist/Beantragen bei) strukturiert und visuell voneinander abgetrennt.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B0"` angehoben.
+
+## 19. Optimierte Sektion "Entnahmen & Rentenbezug" (Build 00B1)
+- **Umstrukturierung:** Der Expander `"💸 Deine Entnahmen & Rentenbezug"` wurde an seine finale, logische Position direkt unter `"Die Timeline (Meilensteine)"` verschoben.
+- **Korrektur 0,00 € Auszahlungen:** Durch den `.max()`-Zugriff auf das Startjahr in der Timeline wurde der Bug behoben, bei dem unterjährige Bezüge fälschlicherweise den Betrag 0,00 € auswiesen. Nun wird der echte monatliche Maximalwert präzise angezeigt.
+- **Neues dreispaltiges Layout:** Die Sektion ist in drei Spalten aufgeteilt. Die linke Spalte zeigt das Startdatum als prominenten Ausrichtungsmarker.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B1"` angehoben.
+
+## 20. Layout-Feinschliff & optimierte Breiten (Build 00B2)
+- **Kompaktes Design:** Der Steuern- und Abgaben-Hinweis wurde in die mittlere Spalte (`c2`) verschoben und direkt unter den Betrag gesetzt, was für einen aufgeräumten Lesefluss sorgt.
+- **Schmalere Datumsspalte:** Die linke Spalte für den Startzeitpunkt (z. B. `📅 Juli 2032`) wurde auf eine Breite von **10%** verkleinert (`st.columns([0.10, 0.50, 0.40])`). Dadurch bleibt mehr Platz für die detaillierten Beschreibungen und das To-Do-Fristen-Feld.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B2"` angehoben.
+
+## 21. Globaler "Alle Sammel-Kat." Button in der Sidebar (Build 00B3)
+- **Komfortables Einklappen:** Im Haushaltsbuch-Expander der Sidebar wurde oberhalb des ersten Eintrags ein neuer Toggle-Button mit der Beschriftung `"Alle Sammel-Kat."` hinzugefügt.
+- **Dynamisches Symbol:** 
+  - Zeigt **▼**, wenn mindestens eine Sammelkategorie ausgeklappt ist. Ein Klick darauf klappt alle Sammelkategorien gleichzeitig ein.
+  - Zeigt **▶**, wenn alle Sammelkategorien eingeklappt sind. Ein Klick darauf klappt alle Sammelkategorien gleichzeitig aus.
+- **Intelligente Sichtbarkeit:** Der Button wird vollautomatisch ausgeblendet, falls keine Sammelkategorien (Gruppen) erfasst sind.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B3"` angehoben.
+
+## 22. Reihung & Divider für Sammelkategorien in der Sidebar (Build 00B4)
+- **Saubere Trennung:** Um logische Verwirrung auszuschließen, wurde die Kategorienliste im Haushaltsbuch-Expander der Sidebar neu sortiert:
+  - **Hauptkategorien (Hauptebene):** Werden zuerst und geschlossen dargestellt.
+  - **Sammelkategorien (Gruppen):** Werden danach gerendert.
+- **Visueller Divider & Platzierung:** 
+  - Sofern Sammelkategorien (Gruppen) vorhanden sind, wird zwischen den Hauptkategorien und den Sammelkategorien ein sauberer Divider (`st.markdown("---")`) eingefügt.
+  - Der globale **"Alle Sammel-Kat." Button** wurde präzise unter diesem Divider und unmittelbar oberhalb der Gruppen platziert.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B4"` angehoben.
+
 
 

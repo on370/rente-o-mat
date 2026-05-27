@@ -1,6 +1,6 @@
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 STAGE = "[rel]"
-BUILD_ID = "00AD"  # Phase 4 audit: Reset widget keys on import via uploader suffix
+BUILD_ID = "00B4"  # Phase 4 audit: Reordered categories in Sidebar, placed "Alle Sammel-Kat." button under a divider between main level and groups
 
 # Aktueller Rentenwert ab 1. Juli 2025 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 40.79

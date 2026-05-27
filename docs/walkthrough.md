@@ -63,5 +63,11 @@ Die Basis ist damit grundsolide. Für eine zukünftige Iteration stehen dann Fea
 - **Startfehler-Behebung & NameError-Beseitigung:** Behebung des `NameError: name 'jahre_bis_beginn' is not defined`-Fehlers in `ui/sidebar.py`, der beim Starten von Streamlit auftrat, indem die Definition der Variablen sauber vor ihrer Verwendung in den Berechnungen platziert wurde.
 - **Buildnummern-Erhöhung:** Erhöhung der Build-ID auf `"00A6"` in `config.py` und Nachführung aller relevanten historischen Aufzeichnungen.
 
+## 9. Detailverbesserung: Monatsgenaue & chronologische Timeline im Briefing-Tab (Build 00A7)
+- **Monatsgenaue Angabe:** Die Meilenstein-Timeline im "Briefing" Tab zeigt nun nicht mehr nur bloße Jahreszahlen (z. B. `2032`), sondern gibt den exakten Eintrittsmonat im deutschen Langformat an (z. B. `Juli 2032`). Hierzu wurde die bewährte Formatierungsfunktion `fmt_jahr_monat_de` aus dem PDF-Export-Modul wiederverwendet.
+- **Chronologische Sortierung:** Die Ereignisse in der Timeline (Start der Simulation, Beginn/Ende der ATZ, Renteneintritt, Start weiterer Einnahmen und einmalige Sonderausgaben) werden nun chronologisch nach ihrem tatsächlichen Eintrittszeitpunkt (Dezimaljahr) sortiert und ausgegeben, anstatt wie zuvor in statischer Reihenfolge gelistet zu werden.
+- **Sonderausgaben-Integration:** Einmalige Sonderausgaben werden nun ebenfalls vollautomatisch mit ihrem exakten Fälligkeitsmonat und -jahr sowie dem formatierten Betrag in die Timeline aufgenommen.
+- **Präzisions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00A7"` angehoben.
+
 
 

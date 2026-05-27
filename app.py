@@ -900,24 +900,52 @@ with tab5:
     with st.expander("🗓️ Die Timeline (Meilensteine)"):
         st.markdown("**Chronologischer Ablauf der wichtigsten Ereignisse.**")
 
-        timeline_html = "<ul>"
-        timeline_html += (
-            f"<li><b>{p['aktuelles_jahr']}:</b> Start der Simulation (Aktivphase)</li>"
+        from logic.pdf_export import fmt_jahr_monat_de
+
+        # Chronologische Timeline aufbauen
+        timeline_items = []
+        timeline_items.append(
+            (float(p["aktuelles_jahr"]), f"Start der Simulation: <b>Januar {p['aktuelles_jahr']}</b>")
         )
 
-        if p["atz_simulieren"]:
+        if p.get("atz_simulieren"):
             atz_mitte = p["atz_start"] + (p["atz_dauer"] / 2)
-            timeline_html += f"<li><b>{int(p['atz_start'])}:</b> Beginn der Altersteilzeit (Aktivphase, volles Arbeiten bei reduziertem Gehalt)</li>"
-            timeline_html += f"<li><b>{int(atz_mitte)}:</b> Wechsel in die passive Altersteilzeit (Freistellung)</li>"
+            timeline_items.append(
+                (float(p["atz_start"]), f"Beginn der Altersteilzeit (ATZ-Aktiv): <b>{fmt_jahr_monat_de(p['atz_start'])}</b>")
+            )
+            timeline_items.append(
+                (float(atz_mitte), f"Wechsel in die Freistellungsphase (ATZ-Passiv): <b>{fmt_jahr_monat_de(atz_mitte)}</b>")
+            )
 
-        timeline_html += f"<li><b>{int(p['rentenbeginn'])}:</b> Renteneintritt</li>"
+        timeline_items.append(
+            (float(p["rentenbeginn"]), f"Renteneintritt: <b>{fmt_jahr_monat_de(p['rentenbeginn'])}</b>")
+        )
 
         # Weitere Einkünfte
-        for e in p["einnahmen"]:
-            if e["start"] > p["aktuelles_jahr"] and e["start"] != p["rentenbeginn"]:
-                timeline_html += f"<li><b>{int(e['start'])}:</b> Start der Auszahlung: {e['name']}</li>"
+        for e in p.get("einnahmen", []):
+            if float(e["start"]) > float(p["aktuelles_jahr"]) and float(e["start"]) != float(p["rentenbeginn"]):
+                timeline_items.append(
+                    (float(e["start"]), f"Start der Auszahlung von {e['name']}: <b>{fmt_jahr_monat_de(e['start'])}</b> ({e['betrag']:,.2f} € mtl.)")
+                )
 
+        # Einmalige Sonderausgaben
+        for ea in p.get("einmalige_ausgaben", []):
+            t_event = float(ea["jahr"]) + (int(ea.get("monat", 1)) - 1) / 12
+            if t_event >= float(p["aktuelles_jahr"]):
+                timeline_items.append(
+                    (t_event, f"Einmalige Sonderausgabe '{ea['name']}': <b>{fmt_jahr_monat_de(t_event)}</b> ({ea['betrag']:,.2f} €)")
+                )
+
+        # Sortieren nach Zeitpunkt
+        timeline_items.sort(key=lambda x: x[0])
+
+        timeline_html = "<ul>"
+        for t_val, t_desc in timeline_items:
+            # Währungswerte formatieren (. -> , und X -> .)
+            formatted_desc = t_desc.replace(",", "X").replace(".", ",").replace("X", ".")
+            timeline_html += f"<li>{formatted_desc}</li>"
         timeline_html += "</ul>"
+
         st.markdown(timeline_html, unsafe_allow_html=True)
 
     with st.expander("⚙️ Szenario-Parameter & Rechtliches"):

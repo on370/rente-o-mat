@@ -1,6 +1,6 @@
 VERSION = "1.0"
 STAGE = "[rc1]"
-BUILD_ID = "00A6"  # Phase 4 audit: Pytest suite, remove dead code, unified dynamic scaling
+BUILD_ID = "00A7"  # Phase 4 audit: Pytest suite, remove dead code, unified dynamic scaling, monatsgenaue Timeline
 
 # Aktueller Rentenwert ab 1. Juli 2025 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 40.79

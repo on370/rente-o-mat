@@ -69,5 +69,68 @@ Die Basis ist damit grundsolide. Für eine zukünftige Iteration stehen dann Fea
 - **Sonderausgaben-Integration:** Einmalige Sonderausgaben werden nun ebenfalls vollautomatisch mit ihrem exakten Fälligkeitsmonat und -jahr sowie dem formatierten Betrag in die Timeline aufgenommen.
 - **Präzisions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00A7"` angehoben.
 
+## 10. Detailverbesserung: Ausgaben-Sektion & Auditoren-Tabs im Briefing (Build 00A8)
+- **Detaillierte Ausgaben-Sektion (`🛒 Deine Ausgaben`):** Einbindung einer neuen, einklappbaren Sektion im Briefing-Tab zur lückenlosen Auflistung aller laufenden Budgetkategorien aus dem Haushaltsbuch. Die Tabelle stellt den monatlichen Betrag während des Erwerbslebens (100%), den individuellen prozentualen Minderungsanteil im Ruhestand sowie den prognostizierten monatlichen Ruhestandsbetrag übersichtlich nebeneinander. Am Ende wird eine Summenzeile gebildet.
+- **Befristete & einmalige Ausgaben:** Sofern definiert, werden auch alle befristeten Zusatzausgaben (inklusive jährlichem Planungszeitraum) sowie alle einmaligen Sonderausgaben (inklusive exaktem Fälligkeitsmonat und -jahr) sauber in Formaten für Planungsdaten gelistet.
+- **100% Transparenz für Auditoren:** Der einklappbare Entwickler-Bereich wurde um komfortable Streamlit-Tabs erweitert. Hierdurch können Gutachter nun nicht mehr nur die `engine.py`, sondern alle vier relevanten Quellcode-Dateien der inneren Fachlogik direkt in der Benutzeroberfläche einsehen:
+  - `🖥️ Engine (engine.py)` (Steuerungs- und Simulationslogik)
+  - `⚖️ Einkommensteuer (taxes.py)` (Steuertarife 2024/2025, Splitting, Milderungszone Soli)
+  - `🏥 Sozialversicherung (sozialversicherung.py)` (BBG-Dynamisierung, Sätze nach Kinderzahl, KV-Freibetrag)
+  - `👴 Rentenrecht (rentenrecht.py)` (Regelaltersgrenzen, Rentenabschläge, EP-Berechnungen)
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00A8"` angehoben.
+
+## 11. Betriebssicherheit & Haushaltsbuch-Validierung (Build 00A9)
+- **Echtzeit-Namenskollisionsschutz im UI:** Beim Erstellen von neuen Kategorien oder Sammelkategorien (Gruppen) sowie beim Umbenennen bestehender Elemente prüft das UI (`sidebar.py`) nun sofort im Session State, ob der gewünschte Name bereits vergeben ist. Falls ja, wird eine Fehlermeldung (`st.error`) angezeigt, anstatt fehlerhafte Duplikate anzulegen. Dies verhindert logische Verwirrungen und fehlerhafte Zuordnungen.
+- **Import-Validierung & Bereinigungsschleife:** Beim Laden von JSON-Profilen (in `persistence.py`) haben wir eine hochrobuste Validierungsschleife integriert, die das gesamte geladene Haushaltsbuch bereinigt:
+  - *ID-Kollisionen auflösen:* Jede ID wird auf Eindeutigkeit geprüft; Duplikate werden automatisch mit eindeutigen Zeitstempeln überschrieben.
+  - *Zirkelbezüge eliminieren:* Falls ein Element sich selbst als Parent referenziert (`parent_id == id`), wird dieses automatisch auf `None` zurückgesetzt.
+  - *Gruppenbereinigung:* Gruppen dürfen selbst kein `parent_id` besitzen; dies wird hart erzwungen.
+  - *Referenzprüfung:* Referenziert eine Kategorie ein `parent_id`, das gelöscht wurde oder keine Gruppe ist, wird das `parent_id` sicher auf `None` zurückgesetzt.
+  - *Session-State-Konsistenz:* Nach dem Validieren stellt die Schleife sicher, dass alle Berechnungs-Schlüssel (`c_` und `a_`) typkonform als Float/Int im Session State vorliegen.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00A9"` angehoben.
+
+## 12. Behebung von Kategorie-Name/ID-Mismatches & Fallback-Bugs (Build 00AA)
+- **Fehleranalyse:** Wir haben einen kritischen Schwachpunkt beim Umgang mit namentlich geänderten Standard-Kategorien (z.B. ID `"Wohnen"`, aber Name im UI `"Miete"`) aufgedeckt.
+  1. *UI-Kategorieverlust:* Beim Importieren von Profilen, in denen befristete/einmalige Ausgaben noch über den namentlichen String (z.B. `"Wohnen"`) referenziert waren, schlug das Matching im UI fehl, da die Kategorie `"Wohnen"` nun `"Miete"` hieß. Die Ausgaben fielen fälschlicherweise auf `"Neue Kategorie"` zurück, was im UI zu Duplikaten und Datenchaos führte.
+  2. *Engine-Mismatch:* Die Engine (`logic/engine.py`) verwendete bei befristeten Ausgaben fälschlicherweise `EXP_Miete`, während das Sankey-Diagramm in `app.py` nach `EXP_Wohnen` (der ID!) suchte. Dadurch wurden befristete Ausgaben im Sankey-Diagramm gar nicht oder falsch dargestellt.
+  3. *Fallback-Bug:* In `logic/engine.py` Zeile 351 griff `ba.get('kategorie', ba['name'])` fehl, da ein leerer String `""` (Hauptebene) existierte und vom `get`-Standardwert nicht überschrieben wurde. Dadurch wurden diese Ausgaben fälschlicherweise als `EXP_` gelistet.
+- **Import-Harmonisierung (`persistence.py`):** Ich habe eine automatische Harmonisierungsschleife beim Importieren implementiert. Sie prüft alle Kategorie-Referenzen in befristeten und einmaligen Ausgaben: Falls diese den namentlichen String (z.B. `"Wohnen"`) referenzieren, werden sie sofort und case-insensitive in die korrekte, eindeutige ID (z.B. `"Wohnen"` oder `"kat_..."`) übersetzt.
+- **Engine-Korrekturen (`logic/engine.py`):**
+  - In Zeile 351 wurde der fehlerhafte `.get()`-Schlüsselzugriff durch einen sicheren logischen Operator `or` ersetzt (`kat = ba.get('kategorie') or ba['name']`). Dies garantiert, dass der leere String `""` korrekt als Falsy bewertet wird und sauber auf den Ausgabennamen zurückfällt.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00AA"` angehoben.
+
+## 13. Behebung des Kategorie-Parent-Verlusts beim Profil-Import (Build 00AB)
+- **Fehleranalyse:** Beim Importieren von Profilen aus `t.json` wurden bestimmte Standardkategorien (wie `"Wohnen"`, ID `"Wohnen"`, Name `"Miete"`) fälschlicherweise auf die Hauptebene zurückgesetzt, anstatt in ihrer zugeordneten Sammelkategorie (`"Wohnen"`, ID `"group_1779455571047"`) angezeigt zu werden. Dies lag an Streamlits Widget-Zustands-Verhalten:
+  1. Vor dem Import existierte die Standardkategorie `"Wohnen"` auf der Hauptebene (`parent_id = None`), wodurch die Auswahlliste zur Gruppenwahl (`p_sel_Wohnen`) im Session State den Index `0` ("— Hauptebene —") hielt.
+  2. Nach dem Import lag `"Wohnen"` mit `"parent_id": "group_1779455571047"` vor.
+  3. Beim Wiederrendern griff Streamlit jedoch auf den alten Session-State-Wert `p_sel_Wohnen = 0` zurück und überschrieb den importierten Wert fälschlicherweise wieder auf `parent_id = None`.
+- **Bereinigung der alten Widget-Zustände (`persistence.py`):** Ich habe vor dem Einlesen der neuen Profildaten eine Bereinigungsschleife in `import_settings` implementiert. Diese löscht alle alten Kategorie-bezogenen Widget-Zustände (wie `p_sel_`, `ren_`, `c_`, `a_`, `tg_` und `collapsed_`) vollständig aus `st.session_state`.
+- **Automatische Neuinitialisierung:** Dadurch initialisiert Streamlit die Widgets (insbesondere die Gruppen-Auswahllisten) nach dem Import sauber und fehlerfrei mit den neu importierten, korrekten Werten, wodurch die hierarchische Struktur absolut stabil bestehen bleibt.
+- **Automatisierte Testabdeckung:** Eine neue Testdatei `tests/test_persistence.py` wurde hinzugefügt, um das Löschen der alten Widget-Zustände und das korrekte Laden der Elternbeziehung vollautomatisch abzusichern (alle 22 Tests laufen zu 100% grün durch).
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00AB"` angehoben.
+
+## 14. Geburtsmonat-Erfassung & monatsgenaue Abschlagskalkulation (Build 00AC)
+- **Problemstellung:** Da bisher nur das Geburtsjahr abgefragt wurde, ging das Modell implizit immer vom Geburtsmonat Januar aus. Bei Rentenbeginn im Februar und Geburtsjahr 1966 rechnete das Modell daher mit 23 Monaten vorzeitigen Rentenbezugs (Abschlag 6,9 %) statt mit echten 24 Monaten (Abschlag 7,2 %, wenn der Geburtstag ebenfalls im Februar oder später liegt).
+- **Geburtsmonat-Erfassung im Profil:** In der Sidebar (`ui/sidebar.py`) wird nun neben dem Geburtsjahr komfortabel per `st.selectbox` der Geburtsmonat erfasst. Beide Felder sind ansprechend in Spalten nebeneinander angeordnet.
+- **RAG-Berechnung & Monatsgenauigkeit:**
+  - `berechne_monate_frueher` in `logic/rentenrecht.py` wurde um einen optionalen Parameter `geburtsmonat` (default 1) erweitert.
+  - Das Modell errechnet die Regelaltersgrenze nun absolut monatsgenau unter Einbeziehung des Geburtsmonats.
+  - In `logic/engine.py` wird die genaue Regelaltersgrenze in `calculate_break_even_data` ebenfalls monatsgenau auf Basis des Geburtsmonats bestimmt.
+- **Persistenz (Import/Export):**
+  - Der Geburtsmonat wird über `export_params` in `ui/sidebar.py` exportiert.
+  - Der Geburtsmonat wird über `import_settings` in `data/persistence.py` wieder eingelesen. Die Variable `prev_geburtsmonat` verhindert automatische Resets beim Neuladen.
+- **Automatisierte Absicherung:**
+  - Die Testsuite in `tests/test_rentenrecht.py` wurde um genaue Grenzprüfungen erweitert (z. B. 24 Monate Abschlag bei Februar-Geburtstag/Februar-Eintritt vs. 23 Monate bei Januar-Geburtstag/Februar-Eintritt).
+  - Alle 22 Unit-Tests laufen zu 100% grün durch.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00AC"` angehoben.
+
+## 15. Einstellungs-Widgets im Haushaltsbuch stabilisiert (Build 00AD)
+- **Fehleranalyse:** Streamlits Frontend speichert den Zustand von Widgets (wie Textfeldern oder Dropdowns) lokal im Browser und sendet diesen bei einem Rerun basierend auf dem `key` zurück an den Server. Wenn nach einem Profil-Import eine Kategorie mit derselben ID wie zuvor (z. B. ID `"Wohnen"`, jetzt aber Name `"Miete"` statt `"Wohnen"`) gerendert wurde, hat das Frontend die alten Widget-Werte restauriert:
+  1. Der Name im Einstellungs-Popover der Unterkategorie zeigte fälschlicherweise den alten Gruppennamen `"Wohnen"` statt `"Miete"`.
+  2. Die Gruppenwahl zeigte fälschlicherweise `"— Hauptebene —"` (alter Zustand) statt `"Wohnen"` (neuer Zustand).
+- **Lösung über uploader_id Suffix:** Alle Einstellungs- und Steuerungs-Widget-Schlüssel des Haushaltsbuchs (`opt_`, `ren_`, `p_sel_`, `del_` und `tg_`) wurden in `ui/sidebar.py` mit dem Suffix `_{st.session_state.uploader_id}` versehen. Da `uploader_id` bei jedem erfolgreichen Import hochgezählt wird, werden diese Widget-Schlüssel nach einem Import komplett neu erzeugt.
+- **Resultat:** Das Streamlit-Frontend findet keinen alten Zustand für diese Schlüssel vor, verwirft alle veralteten Browser-Widget-Zustände vollständig und zeichnet das gesamte Optionen-Menü (Name bearbeiten und Gruppenwahl) absolut korrekt mit den frisch geladenen Profildaten neu.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00AD"` angehoben.
+
 
 

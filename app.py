@@ -861,6 +861,90 @@ with tab5:
         else:
             st.info("Simulation erreicht kein Rentenjahr.")
 
+    with st.expander("🛒 Deine Ausgaben (Budget & Planung)"):
+        st.markdown("**Übersicht über dein Haushaltsbuch und geplante Zusatzausgaben.**")
+        
+        # 1. Haushaltsbuch (Kategorien)
+        st.markdown("##### 📦 Monatliches Haushaltsbuch (Laufende Lebenshaltung)")
+        total_erwerb = 0.0
+        total_ruhestand = 0.0
+        
+        haushaltsbuch_rows = []
+        for kat in st.session_state.get("haushaltsbuch_kategorien", []):
+            if not kat.get("is_group"):
+                name = kat.get("name", kat["id"])
+                betrag = float(kat.get("betrag", 0.0))
+                rv_pct = int(kat.get("rv_pct", 100))
+                betrag_rente = betrag * rv_pct / 100.0
+                
+                total_erwerb += betrag
+                total_ruhestand += betrag_rente
+                
+                f_betrag = f"{betrag:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                f_betrag_rente = f"{betrag_rente:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                
+                haushaltsbuch_rows.append(f"| {name} | {f_betrag} | {rv_pct} % | {f_betrag_rente} |")
+                
+        f_total_erwerb = f"{total_erwerb:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+        f_total_ruhestand = f"{total_ruhestand:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        hb_table = f"""
+| Kategorie | Erwerbsleben (100% mtl.) | Anteil im Ruhestand | Ruhestand (mtl. prognostiziert) |
+| :--- | :--- | :--- | :--- |
+{chr(10).join(haushaltsbuch_rows)}
+| **Summe (monatlich)** | **{f_total_erwerb}** | **-** | **{f_total_ruhestand}** |
+"""
+        st.markdown(hb_table)
+        
+        # 2. Befristete Ausgaben
+        ba_list = st.session_state.get("befristete_ausgaben", [])
+        if ba_list:
+            st.write("")
+            st.markdown("##### ⏱️ Befristete Zusatzausgaben (Planungsdaten)")
+            befristete_rows = []
+            for ba in ba_list:
+                name = ba.get("name", "Befristete Ausgabe")
+                betrag_mtl = float(ba.get("betrag_mtl", 0.0))
+                start = ba.get("start", 2026)
+                ende = ba.get("ende", 2030)
+                
+                f_betrag_mtl = f"{betrag_mtl:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                befristete_rows.append(f"| {name} | {f_betrag_mtl} mtl. | {start} - {ende} |")
+                
+            ba_table = f"""
+| Beschreibung / Name | Betrag | Planungszeitraum (Jahre) |
+| :--- | :--- | :--- |
+{chr(10).join(befristete_rows)}
+"""
+            st.markdown(ba_table)
+            
+        # 3. Einmalige Ausgaben
+        ea_list = st.session_state.get("einmalige_ausgaben", [])
+        if ea_list:
+            st.write("")
+            st.markdown("##### 📅 Einmalige Sonderausgaben (Planungsdaten)")
+            monate_namen = [
+                "Januar", "Februar", "März", "April", "Mai", "Juni",
+                "Juli", "August", "September", "Oktober", "November", "Dezember"
+            ]
+            einmalige_rows = []
+            for ea in ea_list:
+                name = ea.get("name", "Einmalige Sonderausgabe")
+                betrag = float(ea.get("betrag", 0.0))
+                jahr = int(ea.get("jahr", 2026))
+                monat = int(ea.get("monat", 1))
+                monat_str = monate_namen[monat - 1]
+                
+                f_betrag = f"{betrag:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                einmalige_rows.append(f"| {name} | {f_betrag} (einmalig) | {monat_str} {jahr} |")
+                
+            ea_table = f"""
+| Beschreibung / Name | Betrag | Fälligkeit |
+| :--- | :--- | :--- |
+{chr(10).join(einmalige_rows)}
+"""
+            st.markdown(ea_table)
+
     with st.expander("📍 Dein Status Quo (Aktivphase Heute)"):
         st.markdown(
             f"**Deine aktuelle Ausgangssituation im Jahr {p['aktuelles_jahr']}:**"
@@ -1053,14 +1137,47 @@ Auf das ermittelte zvE wird der progressive Steuertarif (inkl. Grundfreibetrag) 
 
     with st.expander("🧑‍💻 Für Auditoren & Entwickler: Quellcode der Engine"):
         st.markdown(
-            "**100% Transparenz.** Hier findest du den originalen Python-Code, der exakt in diesem Moment in der Engine (`logic/engine.py`) läuft. Du kannst ihn in einer beliebigen Python-Umgebung kopieren und unsere Mathematik verifizieren."
+            "**100% Transparenz.** Hier findest du den originalen Python-Code, der exakt in diesem Moment in unseren fachlichen Rechenkernen und Modulen läuft. Du kannst ihn kopieren und unsere Mathematik verifizieren."
         )
-        try:
-            with open("logic/engine.py", "r", encoding="utf-8") as f:
-                code_content = f.read()
-            st.code(code_content, language="python")
-        except Exception as e:
-            st.error(f"Konnte Quellcode nicht laden: {e}")
+        
+        tab_engine, tab_taxes, tab_sv, tab_renten = st.tabs([
+            "🖥️ Engine (engine.py)",
+            "⚖️ Einkommensteuer (taxes.py)",
+            "🏥 Sozialversicherung (sozialversicherung.py)",
+            "👴 Rentenrecht (rentenrecht.py)"
+        ])
+        
+        with tab_engine:
+            try:
+                with open("logic/engine.py", "r", encoding="utf-8") as f:
+                    code_content = f.read()
+                st.code(code_content, language="python")
+            except Exception as e:
+                st.error(f"Konnte engine.py nicht laden: {e}")
+                
+        with tab_taxes:
+            try:
+                with open("logic/taxes.py", "r", encoding="utf-8") as f:
+                    code_content = f.read()
+                st.code(code_content, language="python")
+            except Exception as e:
+                st.error(f"Konnte taxes.py nicht laden: {e}")
+                
+        with tab_sv:
+            try:
+                with open("logic/sozialversicherung.py", "r", encoding="utf-8") as f:
+                    code_content = f.read()
+                st.code(code_content, language="python")
+            except Exception as e:
+                st.error(f"Konnte sozialversicherung.py nicht laden: {e}")
+                
+        with tab_renten:
+            try:
+                with open("logic/rentenrecht.py", "r", encoding="utf-8") as f:
+                    code_content = f.read()
+                st.code(code_content, language="python")
+            except Exception as e:
+                st.error(f"Konnte rentenrecht.py nicht laden: {e}")
 
     st.divider()
 

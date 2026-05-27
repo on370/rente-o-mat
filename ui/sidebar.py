@@ -20,23 +20,31 @@ def render_sidebar():
     if "uploader_id" not in st.session_state:
         st.session_state.uploader_id = 0
     geburtsjahr = st.session_state.get("geburtsjahr_key", 1965)
+    geburtsmonat = st.session_state.get("geburtsmonat_key", 1)
     
-    # Check if birth year changed, to update default retirement age
+    # Check if birth year or month changed, to update default retirement age
     if "prev_geburtsjahr" not in st.session_state:
         st.session_state["prev_geburtsjahr"] = geburtsjahr
+    if "prev_geburtsmonat" not in st.session_state:
+        st.session_state["prev_geburtsmonat"] = geburtsmonat
         
     regel_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
     def_beginn_jahr = geburtsjahr + regel_jahre
-    def_beginn_monat = rag_monate + 1
+    def_beginn_monat = geburtsmonat + rag_monate
+    if def_beginn_monat > 12:
+        def_beginn_jahr += 1
+        def_beginn_monat -= 12
     
-    if geburtsjahr != st.session_state["prev_geburtsjahr"]:
+    if geburtsjahr != st.session_state["prev_geburtsjahr"] or geburtsmonat != st.session_state["prev_geburtsmonat"]:
         st.session_state["rentenbeginn_jahr_input"] = def_beginn_jahr
         st.session_state["rentenbeginn_monat_input"] = def_beginn_monat
         st.session_state["prev_geburtsjahr"] = geburtsjahr
+        st.session_state["prev_geburtsmonat"] = geburtsmonat
 
     defaults = {
         "nutzer_name_key": "Max Mustermann",
         "geburtsjahr_key": 1965,
+        "geburtsmonat_key": 1,
         "kinderzahl_key": 0,
         "rentenbeginn_jahr_input": def_beginn_jahr,
         "rentenbeginn_monat_input": def_beginn_monat,
@@ -151,12 +159,23 @@ def render_sidebar():
                 key="nutzer_name_key",
                 help="Wird für den Dateinamen beim Export verwendet.",
             )
-            geburtsjahr = st.number_input(
+            col_gj, col_gm = st.columns([0.6, 0.4])
+            geburtsjahr = col_gj.number_input(
                 "Geburtsjahr",
                 min_value=1940,
                 max_value=2010,
                 key="geburtsjahr_key",
                 help="Dient der Berechnung von Freibeträgen und Renten-Altersgrenzen.",
+            )
+            monate_namen = [
+                "Januar", "Februar", "März", "April", "Mai", "Juni",
+                "Juli", "August", "September", "Oktober", "November", "Dezember"
+            ]
+            geburtsmonat = col_gm.selectbox(
+                "Geburtsmonat",
+                options=range(1, 13),
+                format_func=lambda m: monate_namen[m-1],
+                key="geburtsmonat_key",
             )
 
             kinderzahl = st.number_input(
@@ -187,6 +206,7 @@ def render_sidebar():
             export_params = {
                 "nutzer_name": nutzer_name,
                 "geburtsjahr": geburtsjahr,
+                "geburtsmonat": st.session_state.get("geburtsmonat_key", 1),
                 "kinderzahl": kinderzahl,
                 "kirchensteuer_satz": kirchensteuer_satz,
                 "rentenbeginn": st.session_state.get(
@@ -316,7 +336,7 @@ def render_sidebar():
                 format_regelaltersgrenze,
             )
 
-            monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn)
+            monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn, geburtsmonat)
             abschlag_pct = min(14.4, monate_frueher * 0.3)
 
             from logic.taxes import berechne_rentensteuer_anteil
@@ -363,7 +383,7 @@ def render_sidebar():
                 * (1 + rentenanpassung_rate / 100) ** jahre_bis_beginn
             )
 
-            monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn)
+            monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn, geburtsmonat)
             bv_res = berechne_beitragsverlust_logic(
                 monate_frueher, ep_pro_jahr, rw_proj
             )
@@ -374,6 +394,7 @@ def render_sidebar():
             # Params-Pack für Break-Even (muss aktuellste Werte enthalten)
             be_params = {
                 "geburtsjahr": geburtsjahr,
+                "geburtsmonat": geburtsmonat,
                 "aktuelles_jahr": aktuelles_jahr,
                 "rentenbeginn": rentenbeginn,
                 "aktuelles_brutto": st.session_state.get("brutto_key", 6000.0),
@@ -875,7 +896,7 @@ def render_sidebar():
                     toggle_icon = "▶" if collapsed else "▼"
                     
                     c_g1, c_g2, c_g3 = st.columns([0.12, 0.73, 0.15])
-                    if c_g1.button(toggle_icon, key=f"tg_{item['id']}", use_container_width=True):
+                    if c_g1.button(toggle_icon, key=f"tg_{item['id']}_{st.session_state.uploader_id}", use_container_width=True):
                         st.session_state[col_key] = not collapsed
                         st.session_state.global_rerun = True
                         st.rerun()
@@ -883,16 +904,20 @@ def render_sidebar():
                     g_sum_str = f"{g_sum:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
                     c_g2.markdown(f"📁 **{item['name']}** ({g_sum_str})")
                     with c_g3:
-                        with st.popover("⚙️", key=f"opt_{item['id']}"):
+                        with st.popover("⚙️", key=f"opt_{item['id']}_{st.session_state.uploader_id}"):
                             st.markdown("**Gruppen-Optionen**")
                             # Rename group
-                            new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}")
+                            new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}_{st.session_state.uploader_id}")
                             if new_name != item["name"] and new_name.strip():
-                                item["name"] = new_name.strip()
-                                st.session_state.global_rerun = True
-                                st.rerun()
+                                cleaned_name = new_name.strip()
+                                if any(k["name"].lower() == cleaned_name.lower() and k["id"] != item["id"] for k in st.session_state.haushaltsbuch_kategorien):
+                                    st.error("Name existiert bereits!")
+                                else:
+                                    item["name"] = cleaned_name
+                                    st.session_state.global_rerun = True
+                                    st.rerun()
                             # Delete group with child promotion
-                            if st.button("🗑️ Gruppe löschen", key=f"del_{item['id']}", use_container_width=True):
+                            if st.button("🗑️ Gruppe löschen", key=f"del_{item['id']}_{st.session_state.uploader_id}", use_container_width=True):
                                 for child in st.session_state.haushaltsbuch_kategorien:
                                     if child.get("parent_id") == item["id"]:
                                         child["parent_id"] = None
@@ -908,27 +933,31 @@ def render_sidebar():
                             c_lbl, c_gear = st.columns([0.85, 0.15])
                             c_lbl.markdown(f"└─ **{child['name']}**")
                             with c_gear:
-                                with st.popover("⚙️", key=f"opt_{child['id']}"):
+                                with st.popover("⚙️", key=f"opt_{child['id']}_{st.session_state.uploader_id}"):
                                     st.markdown("**Kategorie-Optionen**")
                                     # Rename
-                                    new_name = st.text_input("Name bearbeiten", value=child["name"], key=f"ren_{child['id']}")
+                                    new_name = st.text_input("Name bearbeiten", value=child["name"], key=f"ren_{child['id']}_{st.session_state.uploader_id}")
                                     if new_name != child["name"] and new_name.strip():
-                                        child["name"] = new_name.strip()
-                                        st.session_state.global_rerun = True
-                                        st.rerun()
+                                        cleaned_name = new_name.strip()
+                                        if any(k["name"].lower() == cleaned_name.lower() and k["id"] != child["id"] for k in st.session_state.haushaltsbuch_kategorien):
+                                            st.error("Name existiert bereits!")
+                                        else:
+                                            child["name"] = cleaned_name
+                                            st.session_state.global_rerun = True
+                                            st.rerun()
                                     # Move parent group
                                     p_options = ["— Hauptebene —"] + [g["name"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
                                     p_ids = [None] + [g["id"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
                                     curr_pid = child.get("parent_id")
                                     curr_idx = p_ids.index(curr_pid) if curr_pid in p_ids else 0
-                                    sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{child['id']}")
+                                    sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{child['id']}_{st.session_state.uploader_id}")
                                     new_pid = p_ids[sel_p]
                                     if new_pid != curr_pid:
                                         child["parent_id"] = new_pid
                                         st.session_state.global_rerun = True
                                         st.rerun()
                                     # Delete
-                                    if st.button("🗑️ Löschen", key=f"del_{child['id']}", use_container_width=True):
+                                    if st.button("🗑️ Löschen", key=f"del_{child['id']}_{st.session_state.uploader_id}", use_container_width=True):
                                         st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != child["id"]]
                                         c_key = f"c_{child['id']}"
                                         a_key = f"a_{child['id']}"
@@ -961,27 +990,31 @@ def render_sidebar():
                     c_lbl, c_gear = st.columns([0.85, 0.15])
                     c_lbl.markdown(f"**{item['name']}**")
                     with c_gear:
-                        with st.popover("⚙️", key=f"opt_{item['id']}"):
+                        with st.popover("⚙️", key=f"opt_{item['id']}_{st.session_state.uploader_id}"):
                             st.markdown("**Kategorie-Optionen**")
                             # Rename
-                            new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}")
+                            new_name = st.text_input("Name bearbeiten", value=item["name"], key=f"ren_{item['id']}_{st.session_state.uploader_id}")
                             if new_name != item["name"] and new_name.strip():
-                                item["name"] = new_name.strip()
-                                st.session_state.global_rerun = True
-                                st.rerun()
+                                cleaned_name = new_name.strip()
+                                if any(k["name"].lower() == cleaned_name.lower() and k["id"] != item["id"] for k in st.session_state.haushaltsbuch_kategorien):
+                                    st.error("Name existiert bereits!")
+                                else:
+                                    item["name"] = cleaned_name
+                                    st.session_state.global_rerun = True
+                                    st.rerun()
                             # Move parent group
                             p_options = ["— Hauptebene —"] + [g["name"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
                             p_ids = [None] + [g["id"] for g in st.session_state.haushaltsbuch_kategorien if g.get("is_group")]
                             curr_pid = item.get("parent_id")
                             curr_idx = p_ids.index(curr_pid) if curr_pid in p_ids else 0
-                            sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{item['id']}")
+                            sel_p = st.selectbox("Gruppe wählen", options=range(len(p_options)), format_func=lambda idx: p_options[idx], index=curr_idx, key=f"p_sel_{item['id']}_{st.session_state.uploader_id}")
                             new_pid = p_ids[sel_p]
                             if new_pid != curr_pid:
                                 item["parent_id"] = new_pid
                                 st.session_state.global_rerun = True
                                 st.rerun()
                             # Delete
-                            if st.button("🗑️ Löschen", key=f"del_{item['id']}", use_container_width=True):
+                            if st.button("🗑️ Löschen", key=f"del_{item['id']}_{st.session_state.uploader_id}", use_container_width=True):
                                 st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != item["id"]]
                                 c_key = f"c_{item['id']}"
                                 a_key = f"a_{item['id']}"
@@ -1022,39 +1055,47 @@ def render_sidebar():
                     
                     if st.button("Hinzufügen", key="add_cat_confirm", use_container_width=True):
                         if new_cat_name.strip():
-                            import time
-                            new_id = f"kat_{int(time.time() * 1000)}"
-                            st.session_state.haushaltsbuch_kategorien.append({
-                                "id": new_id,
-                                "name": new_cat_name.strip(),
-                                "parent_id": new_cat_parent_id,
-                                "is_group": False,
-                                "betrag": float(new_cat_betrag),
-                                "rv_pct": 100
-                            })
-                            # Set session state keys for the new category
-                            st.session_state[f"c_{new_id}"] = float(new_cat_betrag)
-                            st.session_state[f"a_{new_id}"] = 100
-                            st.session_state.global_rerun = True
-                            st.rerun()
+                            cleaned_name = new_cat_name.strip()
+                            if any(k["name"].lower() == cleaned_name.lower() for k in st.session_state.haushaltsbuch_kategorien):
+                                st.error("Name existiert bereits!")
+                            else:
+                                import time
+                                new_id = f"kat_{int(time.time() * 1000)}"
+                                st.session_state.haushaltsbuch_kategorien.append({
+                                    "id": new_id,
+                                    "name": cleaned_name,
+                                    "parent_id": new_cat_parent_id,
+                                    "is_group": False,
+                                    "betrag": float(new_cat_betrag),
+                                    "rv_pct": 100
+                                })
+                                # Set session state keys for the new category
+                                st.session_state[f"c_{new_id}"] = float(new_cat_betrag)
+                                st.session_state[f"a_{new_id}"] = 100
+                                st.session_state.global_rerun = True
+                                st.rerun()
 
             with col_btn2:
                 with st.popover("📁 Sammel-Kat.", use_container_width=True):
                     new_group_name = st.text_input("Gruppenname", key="new_group_name")
                     if st.button("Hinzufügen", key="add_group_confirm", use_container_width=True):
                         if new_group_name.strip():
-                            import time
-                            new_id = f"group_{int(time.time() * 1000)}"
-                            st.session_state.haushaltsbuch_kategorien.append({
-                                "id": new_id,
-                                "name": new_group_name.strip(),
-                                "parent_id": None,
-                                "is_group": True,
-                                "betrag": 0.0,
-                                "rv_pct": 100
-                            })
-                            st.session_state.global_rerun = True
-                            st.rerun()
+                            cleaned_name = new_group_name.strip()
+                            if any(k["name"].lower() == cleaned_name.lower() for k in st.session_state.haushaltsbuch_kategorien):
+                                st.error("Name existiert bereits!")
+                            else:
+                                import time
+                                new_id = f"group_{int(time.time() * 1000)}"
+                                st.session_state.haushaltsbuch_kategorien.append({
+                                    "id": new_id,
+                                    "name": cleaned_name,
+                                    "parent_id": None,
+                                    "is_group": True,
+                                    "betrag": 0.0,
+                                    "rv_pct": 100
+                                })
+                                st.session_state.global_rerun = True
+                                st.rerun()
 
         # --- 6b. BEFRISTETE AUSGABEN ---
         if "befristete_ausgaben" not in st.session_state:
@@ -1489,6 +1530,7 @@ def render_sidebar():
         return {
             "nutzer_name": nutzer_name,
             "geburtsjahr": geburtsjahr,
+            "geburtsmonat": geburtsmonat,
             "rentenbeginn": rentenbeginn,
             "atz_simulieren": atz_simulieren,
             "atz_dauer": atz_dauer if atz_simulieren else 0,

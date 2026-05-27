@@ -20,6 +20,18 @@ def import_settings(json_file):
             is_v2 = "version" in raw_data and raw_data["version"] >= "2.0"
             data = raw_data["data"] if is_v2 else raw_data
             
+            # Vor dem Import: Bereinigen aller alten Kategorie-Widget-Zustände aus dem Session State,
+            # um zu verhindern, dass Streamlit veraltete Widget-Werte (wie p_sel_ oder ren_)
+            # für die neu geladenen Kategorien beibehält.
+            if "haushaltsbuch_kategorien" in st.session_state:
+                for kat in st.session_state.haushaltsbuch_kategorien:
+                    kid = kat.get("id")
+                    if kid:
+                        for prefix in ["c_", "a_", "p_sel_", "ren_", "tg_", "collapsed_"]:
+                            k = f"{prefix}{kid}"
+                            if k in st.session_state:
+                                del st.session_state[k]
+            
             # 1. Einnahmen-Liste (Spezialfall)
             if "einnahmen" in data:
                 st.session_state.einnahmen = data["einnahmen"]
@@ -28,6 +40,7 @@ def import_settings(json_file):
             mapping = {
                 "nutzer_name": "nutzer_name_key",
                 "geburtsjahr": "geburtsjahr_key",
+                "geburtsmonat": "geburtsmonat_key",
                 "rentenbeginn": "rentenbeginn_input",
                 "atz_simulieren": "atz_sim_input",
                 "atz_dauer": "atz_dauer_input",
@@ -63,6 +76,8 @@ def import_settings(json_file):
             # Spezialfall: prev_geburtsjahr setzen, um automatisches Zurücksetzen zu verhindern
             if "geburtsjahr" in data:
                 st.session_state["prev_geburtsjahr"] = data["geburtsjahr"]
+            if "geburtsmonat" in data:
+                st.session_state["prev_geburtsmonat"] = data["geburtsmonat"]
             
             # 3. Haushaltsbuch-Einträge
             if "haushaltsbuch_kategorien" in data:
@@ -101,6 +116,99 @@ def import_settings(json_file):
                 st.session_state.einmalige_ausgaben = data["einmalige_ausgaben"]
             else:
                 st.session_state.einmalige_ausgaben = []
+
+            # --- 5. ROBUSTE VALIDIERUNG & BEREINIGUNG DER KATEGORIEN ---
+            if hasattr(st.session_state, "haushaltsbuch_kategorien") and st.session_state.haushaltsbuch_kategorien:
+                kats = st.session_state.haushaltsbuch_kategorien
+                
+                # Eindeutige IDs sichern und Duplikate auflösen
+                seen_ids = set()
+                import time
+                for i, kat in enumerate(kats):
+                    kid = kat.get("id")
+                    if not kid or kid in seen_ids:
+                        new_id = f"kat_{int(time.time() * 1000) + i}"
+                        kat["id"] = new_id
+                    seen_ids.add(kat["id"])
+                
+                # Gruppe IDs sammeln
+                group_ids = {g["id"] for g in kats if g.get("is_group")}
+                
+                # Zirkelbezüge und ungültige Parents bereinigen
+                for kat in kats:
+                    kid = kat.get("id")
+                    pid = kat.get("parent_id")
+                    
+                    # Fall 1: Parent zeigt auf sich selbst (Zirkelbezug)
+                    if pid == kid:
+                        kat["parent_id"] = None
+                        pid = None
+                        
+                    # Fall 2: Parent existiert nicht oder ist keine Gruppe
+                    if pid and pid not in group_ids:
+                        kat["parent_id"] = None
+                        pid = None
+                        
+                    # Fall 3: Gruppen dürfen selbst kein parent_id haben
+                    if kat.get("is_group") and pid:
+                        kat["parent_id"] = None
+                        
+                # Konsistenz im Session State erzwingen
+                for kat in kats:
+                    if not kat.get("is_group"):
+                        c_key = f"c_{kat['id']}"
+                        a_key = f"a_{kat['id']}"
+                        
+                        # Wert-Typisierung absichern
+                        try:
+                            val = float(kat.get("betrag", 100.0))
+                        except (ValueError, TypeError):
+                            val = 100.0
+                            
+                        try:
+                            rv = int(kat.get("rv_pct", 100))
+                        except (ValueError, TypeError):
+                            rv = 100
+                            
+                        kat["betrag"] = val
+                        kat["rv_pct"] = rv
+                        
+                        st.session_state[c_key] = val
+                        st.session_state[a_key] = rv
+
+                # --- 6. HARMONISIERUNG DER KATEGORIE-VERKNÜPFUNGEN ---
+                # Wir stellen sicher, dass befristete und einmalige Ausgaben immer die ID (nicht den Namen) der Kategorie referenzieren!
+                name_to_id = {}
+                id_to_id = set()
+                for kat in kats:
+                    if not kat.get("is_group"):
+                        name_to_id[kat["name"].lower()] = kat["id"]
+                        name_to_id[kat["id"].lower()] = kat["id"] # Fallback: Falls die ID selbst gesucht wird
+                        id_to_id.add(kat["id"])
+                
+                # Befristete Ausgaben harmonisieren
+                if hasattr(st.session_state, "befristete_ausgaben") and st.session_state.befristete_ausgaben:
+                    for ba in st.session_state.befristete_ausgaben:
+                        curr_kat = ba.get("kategorie", "")
+                        if curr_kat:
+                            if curr_kat in id_to_id:
+                                continue
+                            elif curr_kat.lower() in name_to_id:
+                                ba["kategorie"] = name_to_id[curr_kat.lower()]
+                            else:
+                                ba["kategorie"] = ""
+                                
+                # Einmalige Ausgaben harmonisieren
+                if hasattr(st.session_state, "einmalige_ausgaben") and st.session_state.einmalige_ausgaben:
+                    for ea in st.session_state.einmalige_ausgaben:
+                        curr_kat = ea.get("kategorie", "")
+                        if curr_kat:
+                            if curr_kat in id_to_id:
+                                continue
+                            elif curr_kat.lower() in name_to_id:
+                                ea["kategorie"] = name_to_id[curr_kat.lower()]
+                            else:
+                                ea["kategorie"] = ""
 
             return True
         except Exception as e:

@@ -53,11 +53,12 @@ def _calculate_grv_components(jahr_float, e, params):
     from config import RENTENWERT_AKTUELL
     
     geburtsjahr = params.get('geburtsjahr', 1965)
+    geburtsmonat = params.get('geburtsmonat', 1)
     aktuelles_jahr = params.get('aktuelles_jahr', 2026)
     rentenanpassung_rate = params.get('rentenanpassung_rate', 0.0)
     rentenbeginn = params.get('rentenbeginn', geburtsjahr + 67)
     
-    monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn)
+    monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn, geburtsmonat)
     brutto_voll = params.get('aktuelles_brutto', 0)
     ep_pro_jahr_voll = berechne_ep_pro_jahr(brutto_voll, aktuelles_jahr)
     
@@ -348,7 +349,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         if jahr_float >= ba.get('start', 0) and jahr_float <= ba.get('ende', 9999):
             b = ba['betrag_mtl']
             if ba.get('inflationsgebunden', False): b = _dynamisiere_betrag(b, aktuelles_jahr, jahr_float, inflation_rate)
-            kat = ba.get('kategorie', ba['name'])
+            kat = ba.get('kategorie') or ba['name']
             ausgaben_details[f"EXP_{kat}"] = ausgaben_details.get(f"EXP_{kat}", 0) + b
             ausgaben += b
 
@@ -508,8 +509,9 @@ def calculate_break_even_data(params):
     aktuelles_jahr = params.get("aktuelles_jahr", 2026)
     einnahmen = params.get("einnahmen", [])
     
+    geburtsmonat = params.get("geburtsmonat", 1)
     rag_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
-    rag = geburtsjahr + rag_jahre + (rag_monate / 12)
+    rag = geburtsjahr + rag_jahre + ((geburtsmonat - 1 + rag_monate) / 12)
     
     params_a = params.copy()
     params_b = params.copy()

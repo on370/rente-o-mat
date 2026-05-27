@@ -31,7 +31,7 @@ def format_regelaltersgrenze(geburtsjahr):
     else:
         return f"{jahre} Jahre, {monate} Monate"
 
-def berechne_monate_frueher(geburtsjahr, rentenbeginn_dezimal):
+def berechne_monate_frueher(geburtsjahr, rentenbeginn_dezimal, geburtsmonat=1):
     """
     Berechnet, wie viele Monate vor der Regelaltersgrenze der Renteneintritt erfolgt.
     rentenbeginn_dezimal: Jahr als Float (z.B. 2030.25 für April 2030)
@@ -39,7 +39,7 @@ def berechne_monate_frueher(geburtsjahr, rentenbeginn_dezimal):
     rag_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
     
     # Umrechnung in Gesamtmonate ab Jahr 0 (vereinfacht für Differenzbildung)
-    total_rag_monate = (geburtsjahr + rag_jahre) * 12 + rag_monate
+    total_rag_monate = (geburtsjahr + rag_jahre) * 12 + (geburtsmonat - 1) + rag_monate
     
     # rentenbeginn_dezimal in Monate umrechnen
     total_beginn_monate = int(round(rentenbeginn_dezimal * 12))

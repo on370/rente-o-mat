@@ -153,6 +153,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
     phase = get_phase(jahr_float, params.get('atz_simulieren', False), params.get('atz_start', 9999), rentenbeginn)
 
     # --- INITIALISIERUNG ---
+    sparer_pausch_frei = 1000.0
     b_g = 0.0  # Brutto gesamt (monatlich)
     st_b = 0.0 # Steuer-Basis (monatlich)
     income_details = {}
@@ -203,7 +204,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         else:
             steuer_ekst = berechne_einkommensteuer(zve_jahr, jahr) / 12
             
-        soli = berechne_soli(steuer_ekst * 12) / 12
+        soli = berechne_soli(steuer_ekst * 12, jahr=jahr) / 12
         kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
         netto = b_g - steuer_ekst - soli - kist - sv
 
@@ -255,12 +256,17 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
 
         sv_res = berechne_sv_rentner(sv_einnahmen, jahr, kinderzahl)
         sv = sv_res["Gesamt"]
-        zve_jahr = ermittle_zve_naherung(st_b * 12, jahr, phase="Rente", vorsorgeaufwendungen_jahr=sv * 12)
+        va_jahr = berechne_vorsorgeaufwendungen_steuerlich(st_b, jahr, phase="Rente", kinderzahl=kinderzahl, einnahmen_liste=sv_einnahmen)
+        zve_jahr = ermittle_zve_naherung(st_b * 12, jahr, phase="Rente", vorsorgeaufwendungen_jahr=va_jahr)
         
         steuer_ekst = berechne_einkommensteuer(zve_jahr, jahr) / 12
-        soli = berechne_soli(steuer_ekst * 12) / 12
+        soli = berechne_soli(steuer_ekst * 12, jahr=jahr) / 12
         kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
-        steuer_kapital = berechne_abgeltungsteuer(kapitalertraege_jahressumme, kirchensteuer_satz) / 12
+        
+        # M6: Konsistenter Sparerpauschbetrag (Rente-Einnahme)
+        st_pfl_kapital = max(0.0, kapitalertraege_jahressumme - sparer_pausch_frei)
+        sparer_pausch_frei = max(0.0, sparer_pausch_frei - kapitalertraege_jahressumme)
+        steuer_kapital = berechne_abgeltungsteuer(st_pfl_kapital, kirchensteuer_satz, sparerpauschbetrag=0) / 12
         steuer_ekst += steuer_kapital
         
         for ez in einmalzahlungen_bav:
@@ -276,7 +282,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
             zve_grv = ermittle_zve_naherung(st_b_grv * 12, jahr, phase="Rente", vorsorgeaufwendungen_jahr=sv_grv * 12)
             steuer_grv_full = berechne_einkommensteuer(zve_grv, jahr)
             steuer_grv = steuer_grv_full / 12
-            soli_grv = berechne_soli(steuer_grv_full) / 12
+            soli_grv = berechne_soli(steuer_grv_full, jahr=jahr) / 12
             kist_grv = berechne_kirchensteuer(steuer_grv_full, kirchensteuer_satz) / 12
             grv_netto = grv_brutto_mtl - sv_grv - steuer_grv - soli_grv - kist_grv
         else:
@@ -287,7 +293,6 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
     asset_results = {}
     if assets_state is not None:
         from logic.taxes import berechne_abgeltungsteuer
-        sparer_pausch_frei = 1000.0
         for a_s in assets_state:
             cfg = a_s["config"]
             gewinn = a_s["kapital"] * (cfg["rendite_pa"] / 100.0)
@@ -520,17 +525,45 @@ def calculate_break_even_data(params):
         einnahmen_b.append(e_copy)
     params_b["einnahmen"] = einnahmen_b
 
+    rentenbeginn_a = params_a["rentenbeginn"]
+    rentenbeginn_b = params_b["rentenbeginn"]
+
     jahre = list(range(aktuelles_jahr, geburtsjahr + 101))
     kum_a, kum_b = 0.0, 0.0
     results = []
     
     for j in jahre:
-        res_a = calculate_financials_for_year(j, params_a)
-        res_b = calculate_financials_for_year(j, params_b)
-        n_a, n_b = res_a.get("Netto-GRV", 0.0), res_b.get("Netto-GRV", 0.0)
-        kum_a += n_a * 12
-        kum_b += n_b * 12
-        results.append({"Jahr": j, "Alter": j - geburtsjahr, "Netto_A": n_a, "Netto_B": n_b, "Kumuliert_A": kum_a, "Kumuliert_B": kum_b})
+        res_a = calculate_financials_for_year(j + 0.5, params_a)
+        res_b = calculate_financials_for_year(j + 0.5, params_b)
+        n_a = res_a.get("Netto-GRV", 0.0)
+        n_b = res_b.get("Netto-GRV", 0.0)
+        
+        # M5: Unterjährige, monatsgenaue Ermittlung der Bezugsmonate im Kalenderjahr j
+        if j + 1.0 <= rentenbeginn_a:
+            monate_a = 0.0
+        elif j >= rentenbeginn_a:
+            monate_a = 12.0
+        else:
+            monate_a = (j + 1.0 - rentenbeginn_a) * 12.0
+            
+        if j + 1.0 <= rentenbeginn_b:
+            monate_b = 0.0
+        elif j >= rentenbeginn_b:
+            monate_b = 12.0
+        else:
+            monate_b = (j + 1.0 - rentenbeginn_b) * 12.0
+            
+        kum_a += n_a * monate_a
+        kum_b += n_b * monate_b
+        
+        results.append({
+            "Jahr": j, 
+            "Alter": j - geburtsjahr, 
+            "Netto_A": n_a * monate_a / 12, 
+            "Netto_B": n_b * monate_b / 12, 
+            "Kumuliert_A": kum_a, 
+            "Kumuliert_B": kum_b
+        })
         
     df = pd.DataFrame(results)
     be_row = df[df["Kumuliert_B"] > df["Kumuliert_A"]].head(1)

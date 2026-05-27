@@ -45,6 +45,11 @@ Da in der Vergangenheit durch Prototyping, bulk commits und decimal slips Abweic
 | **`009E`** | Regulär | Abwärtskompatibilität beim Profil-Import behoben | Behebung des `AttributeError` bei Alt-Profilen durch dynamisches Migrieren der flachen `ausgaben_input`-Datenstruktur in die neue hierarchische `haushaltsbuch_kategorien`-Struktur. |
 | **`009F`** | Regulär | Kompakteres Budget-Layout & Kollabierbarkeit | Platzsparende Verlegung des Einstellungs-Zahnrads (⚙️) direkt neben den Kategorienamen sowie Einführung einer kollabierbaren Steuerung für Sammelkategorien über Session-State. |
 | **`00A0`** | Regulär | Jahr- und monatgenaue einmalige Sonderausgaben (Option A) | Einführung von einmaligen Sonderausgaben (z.B. Weltreise, neues Dach) mit monatgenauem Liquiditätsabzug in der Simulations-Engine und Duzen-konformen, side-by-side Buttons und Formularen im UI. |
+| **`00A1`** | Regulär | PDF-Generierung Fix & Briefing-Erweiterungen | Behebung des TypeError-Bugs in der PDF-Diagramm-Generierung sowie Erweiterung der Briefing-Sektionen um eine detaillierte Status-Quo-Aufschlüsselung und eine chronologisch sortierte Timeline mit deutschen Monatsnamen. |
+| **`00A2`** | Regulär | P0-Steuer- und Soli-Fixes gemäß Audit | Korrektur des ESt-Tarifs 2024 und 2025+ gemäß § 32a EStG, Behebung stetiger Übergänge und Implementierung jahres- und splittingabhängiger Solidaritätszuschlags-Freigrenzen. |
+| **`00A3`** | Regulär | PDF-Generierung TypeError Fix | Behebung des TypeError-Bugs ("'>' not supported between instances of 'str' and 'int'") in capture_charts_for_pdf (app.py) durch Hinzufügen von Hilfsspalten zur exclude-Liste. |
+| **`00A4`** | Regulär | Phase 2 Audit Anpassungen | Umsetzung des gesetzlichen Abrundens bei der ESt (§ 32a Abs. 1 EStG), Aktualisierung der Rentenwert- (40,79 €) und Durchschnittsentgelt-Konstanten (50.493 €) auf Rechtsstand 2025, präzise Berechnung der steuerlich abziehbaren Vorsorgeaufwendungen im Ruhestand. |
+| **`00A5`** | Regulär | Phase 3 Audit Anpassungen | Behebung des naiven EP-Zuwachses in der Sidebar-Infobox bei aktiver ATZ, monatsgenaue Ermittlung der Bezugsmonate im Übergangsjahr für Break-Even, einmalige Anwendung des bAV-KV-Freibetrags bei mehreren Quellen, konsistenter Sparerpauschbetrag über alle Kapitalquellen hinweg. |
 
 ---
 

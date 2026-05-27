@@ -104,15 +104,7 @@ def berechne_sv_atz(halbes_brutto_monatlich, jahr, kinderzahl=0):
 def berechne_sv_rentner(einnahmen_liste, jahr, kinderzahl=0):
     """
     Berechnet SV-Beiträge für Rentner (KVdR + PV), differenziert nach Einkommensquelle.
-
-    einnahmen_liste: Liste von dicts mit {"betrag": float, "typ": str}
-    Typen: "Gesetzlich", "bAV", "Privat", "Kapital", "Sonstiges"
-
-    Regeln:
-    - Gesetzliche Rente: KVdR-Beitrag (halber allg. Satz + Zusatzbeitrag) + PV
-    - bAV: Voller KV+PV-Beitrag (AN+AG-Anteil!) oberhalb Freibetrag
-    - Privat: In der KVdR i.d.R. kein KV-Beitrag (nur bei freiwilliger Versicherung)
-    - Kapital: In der KVdR kein KV-Beitrag
+    Wendet den bAV-KV-Freibetrag einmalig auf die Summe aller bAV-Bezüge an (M3).
     """
     p = _get_sv_params(jahr)
     pv_satz = berechne_pv_satz(kinderzahl, p)
@@ -120,23 +112,41 @@ def berechne_sv_rentner(einnahmen_liste, jahr, kinderzahl=0):
     sv_gesamt = 0.0
     sv_details = {}
 
+    # 1. Summiere bAV-Bezüge für die einmalige Freibetrags-Anwendung
+    bav_gesamt = 0.0
+    for e in einnahmen_liste:
+        if e["typ"] == "bAV":
+            bav_gesamt += e["betrag"]
+
+    # Berechne SV auf summierte bAV (einmaliger Freibetrag)
+    if bav_gesamt > 0:
+        bav_beitragspflichtig = max(0, bav_gesamt - p["bav_freibetrag_kv"])
+        # Voller KV-Satz (AN+AG) = ca. 14,6% + Zusatzbeitrag
+        kv_voll = bav_beitragspflichtig * (p["rate_kv_an"] * 2 + p["rate_kv_zusatz"] * 2)
+        pv_beitrag = bav_beitragspflichtig * pv_satz * 2  # Auch voller PV-Satz
+        sv_bav = kv_voll + pv_beitrag
+        
+        # Aufteilen auf Details (anteilig)
+        for e in einnahmen_liste:
+            if e["typ"] == "bAV":
+                anteil = e["betrag"] / bav_gesamt
+                sv_details[e.get("name", "bAV")] = sv_bav * anteil
+                
+        sv_gesamt += sv_bav
+
+    # 2. Berechne alle anderen Einnahmen
     for e in einnahmen_liste:
         betrag = e["betrag"]
         typ = e["typ"]
+        
+        if typ == "bAV":
+            continue
 
         if typ == "Gesetzlich":
             # KVdR: Halber allgemeiner Satz + halber Zusatzbeitrag
             kv = betrag * (p["rate_kv_rentner"] + p["rate_kv_rentner_zusatz"])
             pv_beitrag = betrag * pv_satz
             sv = kv + pv_beitrag
-
-        elif typ == "bAV":
-            # Voller Beitragssatz (AN+AG) auf bAV-Rente, aber Freibetrag abziehen
-            beitragspflichtig = max(0, betrag - p["bav_freibetrag_kv"])
-            # Voller KV-Satz (AN+AG) = ca. 14,6% + Zusatzbeitrag
-            kv_voll = beitragspflichtig * (p["rate_kv_an"] * 2 + p["rate_kv_zusatz"] * 2)
-            pv_beitrag = beitragspflichtig * pv_satz * 2  # Auch voller PV-Satz
-            sv = kv_voll + pv_beitrag
 
         elif typ in ["Privat", "Kapital"]:
             # In der KVdR kein KV/PV-Beitrag auf private Renten und Kapitalerträge
@@ -153,11 +163,11 @@ def berechne_sv_rentner(einnahmen_liste, jahr, kinderzahl=0):
 
     return {"Gesamt": sv_gesamt, "Details": sv_details}
 
-def berechne_vorsorgeaufwendungen_steuerlich(brutto_monatlich, jahr, phase="Aktiv"):
+def berechne_vorsorgeaufwendungen_steuerlich(brutto_monatlich, jahr, phase="Aktiv", kinderzahl=0, einnahmen_liste=None):
     """
-    Berechnet die steuerlich abziehbaren Vorsorgeaufwendungen (vereinfachte Näherung).
+    Berechnet die steuerlich abziehbaren Vorsorgeaufwendungen (Basis-Kranken- und Pflegeversicherung).
     Aktiv: RV (AN+AG voll) + KV/PV (AN-Anteil Basis).
-    Rente: KV/PV (AN-Anteil).
+    Rente: KV/PV (AN-Anteil Basis).
     """
     p = _get_sv_params(jahr)
     
@@ -173,4 +183,35 @@ def berechne_vorsorgeaufwendungen_steuerlich(brutto_monatlich, jahr, phase="Akti
         
         return (rv_abzug + kv_pv_abzug) * 12
     
-    return 0.0
+    # Rente: Rentner zahlen nur KVdR und PV (keine RV).
+    # Beiträge sind als Sonderausgaben abziehbar (KV zu 96% wegen fehlendem Krankengeldanspruch, PV zu 100%).
+    if einnahmen_liste is None:
+        # Fallback auf Basis des übergebenen brutto_monatlich (gesetzliche + bAV Rente)
+        rate_kv = p["rate_kv_rentner"] + p["rate_kv_rentner_zusatz"]
+        pv_satz = berechne_pv_satz(kinderzahl, p)
+        # KVdR halber Satz
+        kv_beitrag = min(brutto_monatlich, p["bbg_kv"]) * rate_kv
+        pv_beitrag = min(brutto_monatlich, p["bbg_kv"]) * pv_satz
+        return (kv_beitrag * 0.96 + pv_beitrag) * 12
+    else:
+        # Präzise Ermittlung anhand der tatsächlichen Rentenbezüge
+        kv_gesamt = 0.0
+        pv_gesamt = 0.0
+        pv_satz = berechne_pv_satz(kinderzahl, p)
+        
+        for e in einnahmen_liste:
+            betrag = e["betrag"]
+            typ = e["typ"]
+            if typ == "Gesetzlich":
+                kv_gesamt += min(betrag, p["bbg_kv"]) * (p["rate_kv_rentner"] + p["rate_kv_rentner_zusatz"])
+                pv_gesamt += min(betrag, p["bbg_kv"]) * pv_satz
+            elif typ == "bAV":
+                beitragspflichtig = max(0, betrag - p["bav_freibetrag_kv"])
+                kv_gesamt += min(beitragspflichtig, p["bbg_kv"]) * (p["rate_kv_an"] * 2 + p["rate_kv_zusatz"] * 2)
+                pv_gesamt += min(beitragspflichtig, p["bbg_kv"]) * pv_satz * 2
+            elif typ not in ["Privat", "Kapital"] and typ != "":
+                kv_gesamt += min(betrag, p["bbg_kv"]) * (p["rate_kv_rentner"] + p["rate_kv_rentner_zusatz"])
+                pv_gesamt += min(betrag, p["bbg_kv"]) * pv_satz
+                
+        kv_pv_abzug = kv_gesamt * 0.96 + pv_gesamt
+        return kv_pv_abzug * 12

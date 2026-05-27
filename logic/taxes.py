@@ -9,26 +9,11 @@ Solidaritätszuschlag, Kirchensteuer, Ertragsanteil und Abgeltungsteuer.
 # Für unbekannte Zukunftsjahre wird der letzte bekannte Tarif verwendet.
 TARIF_PARAMETER = {
     2024: {
-        "grundfreibetrag": 11604,
+        "grundfreibetrag": 11784,
         "zone2_ende": 17005,
         "zone3_ende": 66760,
         "zone4_ende": 277825,
-        "zone2_a": 922.98,
-        "zone2_b": 1400,
-        "zone3_a": 181.19,
-        "zone3_b": 2397,
-        "zone3_c": 1025.38,
-        "zone4_faktor": 0.42,
-        "zone4_abzug": 10602.13,
-        "zone5_faktor": 0.45,
-        "zone5_abzug": 18936.88,
-    },
-    2025: {
-        "grundfreibetrag": 12096,
-        "zone2_ende": 17443,
-        "zone3_ende": 66760,
-        "zone4_ende": 277825,
-        "zone2_a": 932.30,
+        "zone2_a": 954.80,
         "zone2_b": 1400,
         "zone3_a": 181.19,
         "zone3_b": 2397,
@@ -37,6 +22,21 @@ TARIF_PARAMETER = {
         "zone4_abzug": 10636.31,
         "zone5_faktor": 0.45,
         "zone5_abzug": 18971.06,
+    },
+    2025: {
+        "grundfreibetrag": 12096,
+        "zone2_ende": 17443,
+        "zone3_ende": 68480,
+        "zone4_ende": 277825,
+        "zone2_a": 932.30,
+        "zone2_b": 1400,
+        "zone3_a": 176.64,
+        "zone3_b": 2397,
+        "zone3_c": 1015.13,
+        "zone4_faktor": 0.42,
+        "zone4_abzug": 10911.92,
+        "zone5_faktor": 0.45,
+        "zone5_abzug": 19246.67,
     },
 }
 
@@ -73,22 +73,27 @@ def berechne_einkommensteuer(zu_versteuerndes_einkommen, jahr=2025):
     """
     Berechnung der deutschen Einkommensteuer gemäß § 32a EStG.
     Tarif wird anhand des Jahres automatisch gewählt.
+    Gemäß § 32a Abs. 1 EStG wird das zvE auf den nächsten vollen Euro abgerundet
+    und die berechnete Steuer ebenfalls auf den nächsten vollen Euro abgerundet.
     """
-    X = max(0, zu_versteuerndes_einkommen)
+    import math
+    X = math.floor(max(0, zu_versteuerndes_einkommen))
     t = _get_tarif(jahr)
 
     if X <= t["grundfreibetrag"]:
-        return 0.0
+        steuer = 0.0
     elif X <= t["zone2_ende"]:
         y = (X - t["grundfreibetrag"]) / 10000
-        return (t["zone2_a"] * y + t["zone2_b"]) * y
+        steuer = (t["zone2_a"] * y + t["zone2_b"]) * y
     elif X <= t["zone3_ende"]:
         y = (X - t["zone2_ende"]) / 10000
-        return (t["zone3_a"] * y + t["zone3_b"]) * y + t["zone3_c"]
+        steuer = (t["zone3_a"] * y + t["zone3_b"]) * y + t["zone3_c"]
     elif X <= t["zone4_ende"]:
-        return t["zone4_faktor"] * X - t["zone4_abzug"]
+        steuer = t["zone4_faktor"] * X - t["zone4_abzug"]
     else:
-        return t["zone5_faktor"] * X - t["zone5_abzug"]
+        steuer = t["zone5_faktor"] * X - t["zone5_abzug"]
+        
+    return float(math.floor(steuer))
 
 
 def berechne_progressionsvorbehalt(zu_versteuerndes_einkommen, steuerfreier_betrag, jahr=2025):
@@ -142,20 +147,24 @@ def berechne_rentensteuer_anteil(rentenbeginn_jahr):
 
 # --- Solidaritätszuschlag (§ 3, 4 SolZG) ---
 # Freigrenze: Seit 2021 stark angehoben (partielle Abschaffung)
-SOLI_FREIGRENZE_SINGLE = 18130  # Jahressteuerbetrag (ab 2024)
 SOLI_SATZ = 0.055  # 5,5%
 # Milderungszone: 11,9% des Überschreitungsbetrags (bis max 5,5%)
 
-def berechne_soli(einkommensteuer_jahr):
+def berechne_soli(einkommensteuer_jahr, splitting=False, jahr=2026):
     """
     Berechnet den Solidaritätszuschlag.
     Seit 2021 nur noch für höhere Einkommen relevant.
     """
-    if einkommensteuer_jahr <= SOLI_FREIGRENZE_SINGLE:
+    if jahr <= 2024:
+        freigrenze = 36260 if splitting else 18130
+    else:
+        freigrenze = 39900 if splitting else 19950
+
+    if einkommensteuer_jahr <= freigrenze:
         return 0.0
 
     # Milderungszone: 11,9% des Differenzbetrags, max. 5,5% der EkSt
-    differenz = einkommensteuer_jahr - SOLI_FREIGRENZE_SINGLE
+    differenz = einkommensteuer_jahr - freigrenze
     soli_milderung = differenz * 0.119
     soli_voll = einkommensteuer_jahr * SOLI_SATZ
     return min(soli_milderung, soli_voll)

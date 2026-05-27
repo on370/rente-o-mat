@@ -337,8 +337,24 @@ def render_sidebar():
             brutto_fuer_ep = st.session_state.get("brutto_key", 6000.0)
             ep_pro_jahr = berechne_ep_pro_jahr(brutto_fuer_ep, aktuelles_jahr)
 
-            jahre_bis_beginn = max(0, rentenbeginn - aktuelles_jahr)
-            ep_zuwachs = jahre_bis_beginn * ep_pro_jahr
+            # K7/M1: Präzise EP-Akkumulation unter Berücksichtigung der ATZ (80% Aufstockung)
+            from logic.engine import get_phase
+            ep_zuwachs = 0.0
+            atz_start_jahr = rentenbeginn - atz_dauer if atz_simulieren else 9999
+            
+            for j_sim in range(aktuelles_jahr, int(rentenbeginn)):
+                phase_sim = get_phase(j_sim + 0.5, atz_simulieren, atz_start_jahr, rentenbeginn)
+                if phase_sim == "Aktiv":
+                    ep_zuwachs += ep_pro_jahr
+                elif "ATZ" in phase_sim:
+                    ep_zuwachs += ep_pro_jahr * 0.8
+            
+            # Bruchstück für das letzte Jahr vor Rentenbeginn
+            rest_jahr = rentenbeginn - int(rentenbeginn)
+            if rest_jahr > 0:
+                phase_sim = get_phase(rentenbeginn - 0.01, atz_simulieren, atz_start_jahr, rentenbeginn)
+                factor = 0.8 if "ATZ" in phase_sim else 1.0
+                ep_zuwachs += ep_pro_jahr * factor * rest_jahr
 
             # K2: Rentenwert projizieren für Infobox
             rw_proj = (

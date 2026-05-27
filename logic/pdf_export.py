@@ -285,13 +285,5 @@ def create_briefing_pdf(params, df_timeline, chart_images=None):
             pdf.image(img_data, x=10, y=pdf.get_y(), w=180)
             pdf.set_y(pdf.get_y() + 100)
 
-    # Fix: TypeError 'str' and 'int' Bug in PDF Generation
-    # We do a final cleaning to make sure no invalid checks remain.
-    # Exclude columns list:
-    exclude = ["Jahr", "Phase", "Brutto", "EkSt", "Soli", "KiSt", "Steuern", "Steuersatz", "Sozialabgaben", "Netto-Einkommen", "Bedarf", "Überschuss/Defizit", "Rentenabschlag", "Beitragsverlust", "Steuerpflichtiger_Rentenanteil", "Netto-GRV", "Kapitalzuwachs_Sonder", "Gesetzliche Rente (Potenzial)", "Label", "Jahr_Float", "start_t", "end_t", "bar_width"]
-    if erstes_rentenjahr is not None:
-        res = erstes_rentenjahr.to_dict()
-        income_sources = {k: v for k, v in res.items() if k not in exclude and not k.startswith("EXP_") and not k.startswith("ASSET_VAL_") and not k.startswith("_debug") and isinstance(v, (int, float)) and v > 0}
-
     # Output als Bytes
     return bytes(pdf.output())

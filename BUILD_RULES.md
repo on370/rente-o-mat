@@ -50,6 +50,7 @@ Da in der Vergangenheit durch Prototyping, bulk commits und decimal slips Abweic
 | **`00A3`** | Regulär | PDF-Generierung TypeError Fix | Behebung des TypeError-Bugs ("'>' not supported between instances of 'str' and 'int'") in capture_charts_for_pdf (app.py) durch Hinzufügen von Hilfsspalten zur exclude-Liste. |
 | **`00A4`** | Regulär | Phase 2 Audit Anpassungen | Umsetzung des gesetzlichen Abrundens bei der ESt (§ 32a Abs. 1 EStG), Aktualisierung der Rentenwert- (40,79 €) und Durchschnittsentgelt-Konstanten (50.493 €) auf Rechtsstand 2025, präzise Berechnung der steuerlich abziehbaren Vorsorgeaufwendungen im Ruhestand. |
 | **`00A5`** | Regulär | Phase 3 Audit Anpassungen | Behebung des naiven EP-Zuwachses in der Sidebar-Infobox bei aktiver ATZ, monatsgenaue Ermittlung der Bezugsmonate im Übergangsjahr für Break-Even, einmalige Anwendung des bAV-KV-Freibetrags bei mehreren Quellen, konsistenter Sparerpauschbetrag über alle Kapitalquellen hinweg. |
+| **`00A6`** | Regulär | Phase 4 Audit Anpassungen | Aufsetzen einer modernen Unit-Test-Suite mit 21 Pytest-Modulen im Ordner `tests/`, Bereinigung toter Code-Pfade am Ende von `logic/pdf_export.py`, Vereinheitlichung der Gehalts-Dynamisierung in `logic/engine.py` über `_dynamisiere_betrag`, Beseitigung aller Start-Fehler und Anhebung der Build-Nummer. |
 
 ---
 

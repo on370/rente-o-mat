@@ -168,14 +168,11 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
     netto = 0.0
     grv_netto = 0.0
 
-    gehalts_dyn = params.get('gehalts_dynamik', 1.0) / 100
-    
     # --- 1. HAUPTEINNAHMEN (GEHALT ODER RENTE) ---
     if phase == "Aktiv" or "ATZ" in phase:
-        # Dynamisierung Gehalt (K6-Fix)
-        jahre_seit_start = max(0, jahr - params.get('aktuelles_jahr', 2026))
+        # Dynamisierung Gehalt (K6-Fix/L2)
         brutto_base = params.get('aktuelles_brutto', 0.0)
-        brutto_dyn = brutto_base * (1 + gehalts_dyn) ** jahre_seit_start
+        brutto_dyn = _dynamisiere_betrag(brutto_base, params.get('aktuelles_jahr', 2026), jahr, params.get('gehalts_dynamik', 1.0))
 
         if phase == "Aktiv":
             brutto_st = brutto_dyn

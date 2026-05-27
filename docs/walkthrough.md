@@ -56,5 +56,12 @@ Die Basis ist damit grundsolide. Für eine zukünftige Iteration stehen dann Fea
 - **Einmaliger bAV-KV-Freibetrag bei mehreren Quellen:** Bei mehreren parallelen bAV-Bezügen (z. B. einer monatlichen Betriebsrente und dem monatlichen 1/120-Anteil einer Einmalzahlung) summiert die SV-Engine die Einnahmen nun auf und wendet den gesetzlichen KV-Freibetrag (187,25 € in 2025) nur exakt einmal an. Die Beiträge werden anschließend für das Sankey-Diagramm anteilig aufgeteilt.
 - **Konsistenter Sparerpauschbetrag über alle Kapitalquellen:** Der Sparerpauschbetrag von 1.000 € wird pro Kalenderjahr nun über alle Kapitalerträge (sowohl manuell erfasste Kapital-Einnahmen im Ruhestand als auch die Depotgewinne aus der Asset-Simulation) hinweg exakt einmal gewährt.
 
+## 8. Phase 4 Audit Anpassungen: Code-Qualität, Unit-Tests & Fehlerbereinigung (Build 00A6)
+- **Moderne Unit-Test-Suite (`tests/`):** Wir haben eine umfassende, standardkonforme Test-Suite mit `pytest` aufgesetzt. In 4 dedizierten Testmodulen (Steuerlogik, Sozialversicherung inklusive doppelter bAV-Freibeträge, Rentenrecht inklusive Regelaltersgrenzen und Abschlägen sowie der gesamten Engine-Simulation) werden alle Kernbereiche mit insgesamt 21 Testfunktionen und 78 präzisen Detail-Prüfungen abgedeckt. Die Suite läuft zu 100% fehlerfrei durch.
+- **Bereinigung toter Code-Pfade:** Ungenutzte Altlasten (wie `exclude` und `income_sources` am Ende von `logic/pdf_export.py`) wurden rückstandslos entfernt.
+- **Vereinheitlichung der Gehalts-Dynamisierung:** In `logic/engine.py` wurde die Gehaltsanpassung über die Jahre hinweg sauber auf die zentrale Hilfsfunktion `_dynamisiere_betrag` umgestellt.
+- **Startfehler-Behebung & NameError-Beseitigung:** Behebung des `NameError: name 'jahre_bis_beginn' is not defined`-Fehlers in `ui/sidebar.py`, der beim Starten von Streamlit auftrat, indem die Definition der Variablen sauber vor ihrer Verwendung in den Berechnungen platziert wurde.
+- **Buildnummern-Erhöhung:** Erhöhung der Build-ID auf `"00A6"` in `config.py` und Nachführung aller relevanten historischen Aufzeichnungen.
+
 
 

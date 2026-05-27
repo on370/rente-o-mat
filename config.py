@@ -1,6 +1,6 @@
 VERSION = "1.0"
 STAGE = "[rc1]"
-BUILD_ID = "00A5"  # Phase 3 audit: Sidebar ATZ EP, M5 Break-Even, M3 bAV Freibetrag, M6 Sparerpauschbetrag
+BUILD_ID = "00A6"  # Phase 4 audit: Pytest suite, remove dead code, unified dynamic scaling
 
 # Aktueller Rentenwert ab 1. Juli 2025 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 40.79

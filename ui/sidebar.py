@@ -339,6 +339,7 @@ def render_sidebar():
 
             # K7/M1: Präzise EP-Akkumulation unter Berücksichtigung der ATZ (80% Aufstockung)
             from logic.engine import get_phase
+            jahre_bis_beginn = max(0, rentenbeginn - aktuelles_jahr)
             ep_zuwachs = 0.0
             atz_start_jahr = rentenbeginn - atz_dauer if atz_simulieren else 9999
             

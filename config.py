@@ -1,6 +1,6 @@
-VERSION = "1.1.0"
+VERSION = "1.5.0"
 STAGE = "[rel]"
-BUILD_ID = "00B4"  # Phase 4 audit: Reordered categories in Sidebar, placed "Alle Sammel-Kat." button under a divider between main level and groups
+BUILD_ID = "00BA"  # Phase 2 Korrekturen: Text-Korrektur automatischer Entnahmeplan im Briefing-Tab (Depotbank-Hinweis statt fälschlicher Rente-O-Mat-Automatik)
 
 # Aktueller Rentenwert ab 1. Juli 2025 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 40.79

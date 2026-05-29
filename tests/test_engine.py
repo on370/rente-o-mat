@@ -1,6 +1,6 @@
 import pytest
 from logic.engine import (
-    calculate_financials_for_year, calculate_break_even_data, get_phase
+    calculate_financials_for_year, calculate_break_even_data, get_phase, generate_trend_data
 )
 
 def test_get_phase():
@@ -72,3 +72,51 @@ def test_break_even_underjahrig():
     # Break-Even sollte innerhalb der Lebensspanne erreicht werden
     assert be_jahr is not None
     assert be_alter >= 67
+
+def test_automatic_withdrawals():
+    """Prüft die Funktionsweise der verschiedenen automatischen Entnahmestrategien."""
+    test_params = {
+        'geburtsjahr': 1965,
+        'aktuelles_jahr': 2026,
+        'rentenbeginn': 2032.0,
+        'aktuelles_brutto': 0.0,
+        'kinderzahl': 0,
+        'kirchensteuer_satz': 0.0,
+        'inflation_rate': 0.0,
+        'rentenanpassung_rate': 0.0,
+        'bav_anpassung_rate': 1.0,
+        'gehalts_dynamik': 0.0,
+        'atz_simulieren': False,
+        'atz_start': 9999,
+        'einnahmen': [],
+        'ausgaben_kategorien': ["Lebenshaltung"],
+        'ausgaben_input': {"Lebenshaltung": 1000.0},
+        'anpassungsfaktor_input': {"Lebenshaltung": 100},
+        'befristete_ausgaben': [],
+        'einmalige_ausgaben': [],
+        'assets': [
+            {"name": "Depot A", "startwert": 10000.0, "rendite_pa": 0.0, "steuertyp": "steuerfrei", "entnahme_aktiv": False},
+            {"name": "Depot B", "startwert": 10000.0, "rendite_pa": 0.0, "steuertyp": "steuerfrei", "entnahme_aktiv": False}
+        ],
+        'entnahme_strategie': 'Bedarfsgesteuert: Wasserfall (Priorisiert)',
+        'entnahme_wasserfall_reihenfolge': ["Depot A", "Depot B"]
+    }
+    
+    # 1. Test Wasserfall
+    df = generate_trend_data([2026], test_params)
+    assert df.loc[0, "ASSET_VAL_Depot A"] == 0.0
+    assert df.loc[0, "ASSET_VAL_Depot B"] == 8000.0
+    
+    # 2. Test Pro Rata
+    test_params['entnahme_strategie'] = 'Bedarfsgesteuert: Pro Rata (Gleichmäßig)'
+    df_pr = generate_trend_data([2026], test_params)
+    assert df_pr.loc[0, "ASSET_VAL_Depot A"] == 4000.0
+    assert df_pr.loc[0, "ASSET_VAL_Depot B"] == 4000.0
+    
+    # 3. Test Fixer Prozentsatz
+    test_params['entnahme_strategie'] = 'Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)'
+    test_params['entnahme_fix_pct'] = 5.0
+    df_pct = generate_trend_data([2026], test_params)
+    assert df_pct.loc[0, "ASSET_VAL_Depot A"] == 9500.0
+    assert df_pct.loc[0, "ASSET_VAL_Depot B"] == 9500.0
+

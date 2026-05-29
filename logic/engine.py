@@ -464,7 +464,165 @@ def generate_trend_data(jahre, params):
         for res in periods:
             weight = res.pop("weight")
             
+            # --- AUTOMATISCHE ENTNAHMESTRATEGIEN (Teilautomatik) ---
+            entnahme_strategie = params.get("entnahme_strategie", "Manuell (Keine Automatik)")
+            jahr_float = res.get("Jahr_Float", float(res["Jahr"]))
+            
+            user_assets = []
+            for a in assets_state:
+                if a["name"] == "Cash-Reserven (kum.)":
+                    continue
+                cfg = a["config"]
+                # Ein Asset ist für die Automatik gesperrt, wenn in dieser Periode ein manueller Entnahmeplan aktiv ist
+                manuelle_aktiv = (
+                    cfg.get("entnahme_aktiv") and 
+                    jahr_float >= cfg.get("entnahme_start", 0) and 
+                    jahr_float <= cfg.get("entnahme_ende", 9999)
+                )
+                if not manuelle_aktiv:
+                    user_assets.append(a)
+            
+            if entnahme_strategie != "Manuell (Keine Automatik)" and user_assets:
+                current_deficit = -res["Überschuss/Defizit"] * 12 * weight
+                geburtsjahr = params.get("geburtsjahr", 1965)
+
+                
+                if entnahme_strategie == "Bedarfsgesteuert: Wasserfall (Priorisiert)":
+                    if current_deficit > 0:
+                        order = params.get("entnahme_wasserfall_reihenfolge", [])
+                        def sort_key(asset):
+                            try:
+                                return (0, order.index(asset["name"]))
+                            except ValueError:
+                                return (1, 0)
+                        ordered_assets = sorted(user_assets, key=sort_key)
+                        
+                        for asset in ordered_assets:
+                            cap = max(0.0, asset["kapital"])
+                            withdrawn = min(current_deficit, cap)
+                            if withdrawn > 0:
+                                asset["kapital"] -= withdrawn
+                                current_deficit -= withdrawn
+                                withdrawn_mtl = (withdrawn / 12) / weight
+                                res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
+                                res["Netto-Einkommen"] += withdrawn_mtl
+                                res["Überschuss/Defizit"] += withdrawn_mtl
+                            if current_deficit <= 0.0001:
+                                break
+                                
+                elif entnahme_strategie == "Bedarfsgesteuert: Pro Rata (Gleichmäßig)":
+                    if current_deficit > 0:
+                        while current_deficit > 0.0001:
+                            total_cap = sum(max(0.0, a["kapital"]) for a in user_assets)
+                            if total_cap <= 0:
+                                break
+                            
+                            withdrawals = {}
+                            for asset in user_assets:
+                                cap = max(0.0, asset["kapital"])
+                                if cap > 0:
+                                    proportion = cap / total_cap
+                                    withdrawals[asset["name"]] = min(current_deficit * proportion, cap)
+                                    
+                            if not withdrawals or sum(withdrawals.values()) <= 0:
+                                break
+                                
+                            for asset in user_assets:
+                                withdrawn = withdrawals.get(asset["name"], 0.0)
+                                if withdrawn > 0:
+                                    asset["kapital"] -= withdrawn
+                                    current_deficit -= withdrawn
+                                    withdrawn_mtl = (withdrawn / 12) / weight
+                                    res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
+                                    res["Netto-Einkommen"] += withdrawn_mtl
+                                    res["Überschuss/Defizit"] += withdrawn_mtl
+
+                                
+                elif entnahme_strategie == "Bedarfsgesteuert: Steueroptimiert (Smart)":
+                    if current_deficit > 0:
+                        def steuer_sort_key(asset):
+                            stype = asset["config"].get("steuertyp", "steuerfrei")
+                            if stype == "steuerfrei":
+                                return 0
+                            elif stype == "teilfreistellung":
+                                return 1
+                            else:
+                                return 2
+                        ordered_assets = sorted(user_assets, key=steuer_sort_key)
+                        
+                        for asset in ordered_assets:
+                            cap = max(0.0, asset["kapital"])
+                            withdrawn = min(current_deficit, cap)
+                            if withdrawn > 0:
+                                asset["kapital"] -= withdrawn
+                                current_deficit -= withdrawn
+                                withdrawn_mtl = (withdrawn / 12) / weight
+                                res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
+                                res["Netto-Einkommen"] += withdrawn_mtl
+                                res["Überschuss/Defizit"] += withdrawn_mtl
+                            if current_deficit <= 0.0001:
+                                break
+                                
+                elif entnahme_strategie == "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)":
+                    pct = params.get("entnahme_fix_pct", 4.0)
+                    for asset in user_assets:
+                        cap = max(0.0, asset["kapital"])
+                        withdrawn = cap * (pct / 100.0) * weight
+                        if withdrawn > 0:
+                            asset["kapital"] -= withdrawn
+                            withdrawn_mtl = (withdrawn / 12) / weight
+                            res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
+                            res["Netto-Einkommen"] += withdrawn_mtl
+                            res["Überschuss/Defizit"] += withdrawn_mtl
+                            
+                elif entnahme_strategie == "Substanzerhalt (Nur Rendite entnehmen)":
+                    if current_deficit > 0:
+                        order = params.get("entnahme_wasserfall_reihenfolge", [])
+                        def sort_key(asset):
+                            try:
+                                return (0, order.index(asset["name"]))
+                            except ValueError:
+                                return (1, 0)
+                        ordered_assets = sorted(user_assets, key=sort_key)
+                        
+                        for asset in ordered_assets:
+                            r = asset["config"].get("rendite_pa", 0.0) / 100.0
+                            if r > 0:
+                                cap = max(0.0, asset["kapital"])
+                                max_withdrawable_yield = cap * (r / (1.0 + r)) * weight
+                                withdrawn = min(current_deficit, max_withdrawable_yield, cap)
+                                if withdrawn > 0:
+                                    asset["kapital"] -= withdrawn
+                                    current_deficit -= withdrawn
+                                    withdrawn_mtl = (withdrawn / 12) / weight
+                                    res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
+                                    res["Netto-Einkommen"] += withdrawn_mtl
+                                    res["Überschuss/Defizit"] += withdrawn_mtl
+                            if current_deficit <= 0.0001:
+                                break
+                                
+                elif entnahme_strategie == "Zielverzehr (Null-Landung bis Alter X)":
+                    ziel_alter = params.get("entnahme_ziel_alter", 95)
+                    current_age = jahr_float - geburtsjahr
+                    rem_years = max(1.0, float(ziel_alter) - current_age)
+                    
+                    for asset in user_assets:
+                        cap = max(0.0, asset["kapital"])
+                        r = asset["config"].get("rendite_pa", 0.0) / 100.0
+                        if r > 0:
+                            annual_withdrawal = cap * (r / (1.0 - (1.0 + r)**(-rem_years)))
+                        else:
+                            annual_withdrawal = cap / rem_years
+                        withdrawn = min(annual_withdrawal * weight, cap)
+                        if withdrawn > 0:
+                            asset["kapital"] -= withdrawn
+                            withdrawn_mtl = (withdrawn / 12) / weight
+                            res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
+                            res["Netto-Einkommen"] += withdrawn_mtl
+                            res["Überschuss/Defizit"] += withdrawn_mtl
+
             # 2. Überschuss/Defizit des Jahres behandeln
+
             # Korrektur: Wir reinvestieren nur den "echten" Überschuss, der NICHT aus Asset-Entnahmen stammt.
             # Sonst entsteht ein Loop, wenn ein Asset mit Entnahmeplan gleichzeitig Reinvest-Ziel ist.
             entnahmen_aus_assets = sum(v for k, v in res.items() if k.startswith("Entnahme: "))

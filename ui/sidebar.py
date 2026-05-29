@@ -11,6 +11,34 @@ from logic.rentenrecht import (
 )
 
 
+def get_auto_entnahme_stats(asset_name):
+    """
+    Scans st.session_state.get("df_timeline") and retrieves the start/end years
+    and average monthly rate of positive columns named f"Entnahme: {asset_name}".
+    """
+    df = st.session_state.get("df_timeline")
+    if df is None or df.empty:
+        return None
+    
+    col_name = f"Entnahme: {asset_name}"
+    if col_name not in df.columns:
+        return None
+        
+    df_pos = df[df[col_name] > 0.01]
+    if df_pos.empty:
+        return None
+        
+    start_jahr = int(df_pos["Jahr"].min())
+    end_jahr = int(df_pos["Jahr"].max())
+    avg_betrag = df_pos[col_name].mean()
+    
+    return {
+        "start": start_jahr,
+        "ende": end_jahr,
+        "betrag": avg_betrag
+    }
+
+
 def render_sidebar():
     """Rendert die Sidebar des Rente-O-Mat in logischer Reihenfolge."""
 
@@ -239,6 +267,10 @@ def render_sidebar():
                 "befristete_ausgaben": st.session_state.get("befristete_ausgaben", []),
                 "einmalige_ausgaben": st.session_state.get("einmalige_ausgaben", []),
                 "assets": st.session_state.get("assets", []),
+                "entnahme_strategie": st.session_state.get("entnahme_strategie_key", "Manuell (Keine Automatik)"),
+                "entnahme_wasserfall_reihenfolge": st.session_state.get("entnahme_wasserfall_reihenfolge", []),
+                "entnahme_fix_pct": st.session_state.get("entnahme_fix_pct", 4.0),
+                "entnahme_ziel_alter": st.session_state.get("entnahme_ziel_alter", 95),
             }
             json_str = export_settings(export_params)
 
@@ -445,8 +477,8 @@ def render_sidebar():
                 Das Alter, ab dem die Summe der erhaltenen Regelrente (Szenario B) die Summe der früher bezogenen Frührente (Szenario A) übersteigt. Erst ab diesem Alter "lohnt" sich der spätere Rentenbeginn rein finanziell bezogen auf die gesetzliche Rente.
                 """)
 
-        # --- 4. FINANZEN AKTUELL ---
-        with st.expander("💶 Finanzen Aktuell", expanded=False):
+        # --- 4. ERWERBSEINNAHMEN ---
+        with st.expander("💶 Erwerbseinnahmen", expanded=False):
             aktuelles_brutto = st.number_input(
                 "Brutto/mtl.",
                 key="brutto_key",
@@ -500,360 +532,6 @@ def render_sidebar():
                 "Werte im Sankey zeigen",
                 key="show_vals_key",
             )
-
-        # --- 5. EINNAHMEQUELLEN ---
-        with st.expander("💰 Einnahmequellen (Rente)", expanded=False):
-            if "edit_idx" not in st.session_state:
-                st.session_state.edit_idx = None
-            if "show_add_form" not in st.session_state:
-                st.session_state.show_add_form = False
-
-            if not st.session_state.show_add_form and st.session_state.edit_idx is None:
-                if st.button("➕ Neu"):
-                    st.session_state.show_add_form = True
-                    st.session_state.global_rerun = True
-
-            if st.session_state.show_add_form or st.session_state.edit_idx is not None:
-                is_edit = st.session_state.edit_idx is not None
-                current_e = (
-                    st.session_state.einnahmen[st.session_state.edit_idx]
-                    if is_edit
-                    else {
-                        "name": "Neue Quelle",
-                        "betrag": 500.0,
-                        "typ": "Privat",
-                        "start": rentenbeginn,
-                        "ende": 2065,
-                    }
-                )
-                st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
-                f_name = st.text_input("Name", value=current_e["name"])
-                f_typ_options = [
-                    "Gesetzlich",
-                    "bAV",
-                    "Privat",
-                    "Kapital",
-                    "bAV (Einmalzahlung)",
-                    "Entnahmeplan (Vermögen)",
-                    "Sonstiges",
-                ]
-                f_typ_index = (
-                    f_typ_options.index(current_e["typ"])
-                    if current_e.get("typ") in f_typ_options
-                    else 0
-                )
-                f_typ = st.selectbox("Typ", f_typ_options, index=f_typ_index)
-
-                if f_typ == "bAV (Einmalzahlung)":
-                    f_betrag = st.number_input(
-                        "Einmalbetrag (€ Brutto)",
-                        value=float(current_e["betrag"]),
-                        min_value=0.0,
-                    )
-                    f_start = st.number_input(
-                        "Auszahlungsjahr",
-                        value=int(current_e["start"]),
-                        min_value=aktuelles_jahr,
-                    )
-                    f_ende = f_start
-                elif f_typ == "Entnahmeplan (Vermögen)":
-                    f_betrag = st.number_input(
-                        "Entnahme (€/mtl. Netto)",
-                        value=float(current_e["betrag"]),
-                        min_value=0.0,
-                    )
-                    f_start = st.number_input(
-                        "Von Jahr",
-                        value=int(current_e["start"]),
-                        min_value=aktuelles_jahr,
-                    )
-                    f_ende = st.number_input(
-                        "Bis Jahr", value=int(current_e["ende"]), min_value=f_start
-                    )
-                elif f_typ == "Gesetzlich":
-                    eingabe_modus_options = ["Euro-Betrag", "Entgeltpunkte (EP)"]
-                    current_modus = current_e.get("eingabe_modus", "euro")
-                    eingabe_modus_idx = 0 if current_modus == "euro" else 1
-
-                    f_eingabe_modus_radio = st.radio(
-                        "Eingabemodus",
-                        eingabe_modus_options,
-                        index=eingabe_modus_idx,
-                        horizontal=True,
-                    )
-
-                    if f_eingabe_modus_radio == "Entgeltpunkte (EP)":
-                        f_eingabe_modus = "punkte"
-                        f_punkte = st.number_input(
-                            "Anzahl Entgeltpunkte (lt. Renteninformation)",
-                            value=float(current_e.get("punkte", 40.0)),
-                            min_value=0.0,
-                            step=0.1,
-                        )
-                        from config import RENTENWERT_AKTUELL
-
-                        f_betrag = f_punkte * RENTENWERT_AKTUELL
-                        st.info(
-                            f"Basiswert: **{f_betrag:.2f} €/mtl.** (bei aktuellem Rentenwert, vor Abschlägen)"
-                        )
-                    else:
-                        f_eingabe_modus = "euro"
-                        f_punkte = 0.0
-                        f_betrag = st.number_input(
-                            "Betrag (€/mtl., heutige Anwartschaft lt. Renteninfo)",
-                            value=float(current_e["betrag"]),
-                            min_value=0.0,
-                            help="Nimm hier den Wert 'Bisher erreichte Rentenanwartschaft'. Der Rente-O-Mat berechnet die Hochrechnung mit der gewählten Rate (0, 1, 2%) dann automatisch.",
-                        )
-
-                    f_start = st.number_input(
-                        "Von Jahr",
-                        value=int(current_e["start"]),
-                        min_value=aktuelles_jahr,
-                    )
-                    f_ende = st.number_input(
-                        "Bis Jahr", value=int(current_e["ende"]), min_value=f_start
-                    )
-                else:
-                    f_betrag = st.number_input(
-                        "Betrag (€/mtl.)",
-                        value=float(current_e["betrag"]),
-                        min_value=0.0,
-                    )
-                    f_start = st.number_input(
-                        "Von Jahr",
-                        value=int(current_e["start"]),
-                        min_value=aktuelles_jahr,
-                    )
-                    f_ende = st.number_input(
-                        "Bis Jahr", value=int(current_e["ende"]), min_value=f_start
-                    )
-                c1, c2 = st.columns(2)
-                if c1.button("💾 Speichern"):
-                    new_data = {
-                        "name": f_name,
-                        "betrag": f_betrag,
-                        "typ": f_typ,
-                        "start": f_start,
-                        "ende": f_ende,
-                    }
-                    if f_typ == "Gesetzlich":
-                        new_data["eingabe_modus"] = f_eingabe_modus
-                        new_data["punkte"] = f_punkte
-                    if is_edit:
-                        st.session_state.einnahmen[st.session_state.edit_idx] = new_data
-                    else:
-                        st.session_state.einnahmen.append(new_data)
-                    st.session_state.edit_idx, st.session_state.show_add_form = (
-                        None,
-                        False,
-                    )
-                    st.session_state.global_rerun = True
-                if c2.button("❌ Abbrechen"):
-                    st.session_state.edit_idx, st.session_state.show_add_form = (
-                        None,
-                        False,
-                    )
-                    st.session_state.global_rerun = True
-
-            for i, e in enumerate(st.session_state.einnahmen):
-                col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
-                col1.write(f"**{e['name']}**\n{e['betrag']}€")
-                if col2.button("✏️", key=f"e_{i}"):
-                    st.session_state.edit_idx, st.session_state.show_add_form = i, False
-                    st.session_state.global_rerun = True
-                if col3.button("🗑️", key=f"d_{i}"):
-                    st.session_state.einnahmen.pop(i)
-                    st.session_state.global_rerun = True
-
-        # --- 5b. VERMÖGENSWERTE ---
-        if "assets" not in st.session_state:
-            st.session_state.assets = []
-        if "asset_edit_idx" not in st.session_state:
-            st.session_state.asset_edit_idx = None
-        if "asset_show_add" not in st.session_state:
-            st.session_state.asset_show_add = False
-
-        with st.expander("💎 Vermögenswerte", expanded=False):
-            st.caption(
-                "Erfasse hier deine Depots und Konten. Diese ersetzen das bisherige globale Startvermögen für eine präzisere Simulation."
-            )
-
-            if (
-                not st.session_state.asset_show_add
-                and st.session_state.asset_edit_idx is None
-            ):
-                if st.button("➕ Neues Asset"):
-                    st.session_state.asset_show_add = True
-                    st.session_state.global_rerun = True
-
-            if (
-                st.session_state.asset_show_add
-                or st.session_state.asset_edit_idx is not None
-            ):
-                is_edit = st.session_state.asset_edit_idx is not None
-                curr = (
-                    st.session_state.assets[st.session_state.asset_edit_idx]
-                    if is_edit
-                    else {
-                        "name": "Welt-ETF",
-                        "startwert": 10000.0,
-                        "rendite_pa": 5.0,
-                        "steuertyp": "abgeltung",
-                        "teilfreistellung_pct": 30.0,
-                        "entnahme_aktiv": False,
-                        "entnahme_betrag_mtl": 500.0,
-                        "entnahme_start": aktuelles_jahr,
-                        "entnahme_ende": aktuelles_jahr + 20,
-                    }
-                )
-                st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
-                a_name = st.text_input("Name", value=curr["name"], key="a_name")
-                a_start = st.number_input(
-                    "Startwert (€)",
-                    value=float(curr["startwert"]),
-                    min_value=0.0,
-                    key="a_start",
-                )
-                a_rendite = st.slider(
-                    "Rendite (% p.a.)",
-                    0.0,
-                    10.0,
-                    float(curr["rendite_pa"]),
-                    0.1,
-                    key="a_rendite",
-                )
-
-                a_steuertyp_options = {
-                    "Abgeltungsteuer": "abgeltung",
-                    "Teilfreistellung (ETF)": "teilfreistellung",
-                    "Steuerfrei": "steuerfrei",
-                }
-                a_steuertyp_display = st.selectbox(
-                    "Besteuerung",
-                    list(a_steuertyp_options.keys()),
-                    index=list(a_steuertyp_options.values()).index(curr["steuertyp"]),
-                    key="a_steuer",
-                )
-                a_steuertyp = a_steuertyp_options[a_steuertyp_display]
-
-                a_tfs = 0.0
-                if a_steuertyp == "teilfreistellung":
-                    a_tfs = st.number_input(
-                        "Teilfreistellung (%)",
-                        value=float(curr.get("teilfreistellung_pct", 30.0)),
-                        min_value=0.0,
-                        max_value=100.0,
-                        key="a_tfs",
-                    )
-
-                st.divider()
-                a_ent_aktiv = st.checkbox(
-                    "Entnahmeplan aktivieren",
-                    value=curr.get("entnahme_aktiv", False),
-                    key="a_ent_aktiv",
-                )
-                if a_ent_aktiv:
-                    a_ent_mode = st.selectbox(
-                        "Entnahme-Modus",
-                        ["Fester Betrag", "Kapitalverzehr (bis Ende)"],
-                        index=0 if curr.get("entnahme_modus") == "fix" else 1,
-                        key="a_ent_mode",
-                    )
-                    a_ent_modus_val = (
-                        "fix" if a_ent_mode == "Fester Betrag" else "verzehr"
-                    )
-
-                    if a_ent_modus_val == "fix":
-                        a_ent_betrag = st.number_input(
-                            "Entnahme (€/mtl. Netto)",
-                            value=float(curr.get("entnahme_betrag_mtl", 500.0)),
-                            min_value=0.0,
-                            key="a_ent_betrag",
-                        )
-                    else:
-                        st.info(
-                            "💡 Der Betrag wird automatisch berechnet, damit das Kapital am Ende auf 0€ sinkt."
-                        )
-                        a_ent_betrag = 0.0
-
-                    a_ent_c1, a_ent_c2 = st.columns(2)
-                    a_ent_start = a_ent_c1.number_input(
-                        "Von Jahr",
-                        value=max(
-                            2000, int(curr.get("entnahme_start", aktuelles_jahr))
-                        ),
-                        min_value=2000,
-                        key="a_ent_start",
-                    )
-                    a_ent_ende = a_ent_c2.number_input(
-                        "Bis Jahr (Ende)",
-                        value=max(
-                            a_ent_start,
-                            int(curr.get("entnahme_ende", a_ent_start + 10)),
-                        ),
-                        min_value=a_ent_start,
-                        key="a_ent_ende",
-                    )
-                else:
-                    a_ent_betrag, a_ent_start, a_ent_ende, a_ent_modus_val = (
-                        0.0,
-                        aktuelles_jahr,
-                        aktuelles_jahr + 10,
-                        "fix",
-                    )
-
-                ac1, ac2 = st.columns(2)
-                if ac1.button("💾 Speichern", key="a_save"):
-                    new_asset = {
-                        "name": a_name,
-                        "startwert": a_start,
-                        "rendite_pa": a_rendite,
-                        "steuertyp": a_steuertyp,
-                        "teilfreistellung_pct": a_tfs,
-                        "entnahme_aktiv": a_ent_aktiv,
-                        "entnahme_betrag_mtl": a_ent_betrag,
-                        "entnahme_start": a_ent_start,
-                        "entnahme_ende": a_ent_ende,
-                        "entnahme_modus": a_ent_modus_val,
-                    }
-                    if is_edit:
-                        st.session_state.assets[st.session_state.asset_edit_idx] = (
-                            new_asset
-                        )
-                    else:
-                        st.session_state.assets.append(new_asset)
-                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = (
-                        None,
-                        False,
-                    )
-                    st.session_state.global_rerun = True
-                if ac2.button("❌ Abbrechen", key="a_cancel"):
-                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = (
-                        None,
-                        False,
-                    )
-                    st.session_state.global_rerun = True
-
-            for i, asset in enumerate(st.session_state.assets):
-                col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
-                if asset.get("entnahme_aktiv"):
-                    if asset.get("entnahme_modus") == "verzehr":
-                        ent_str = " | Entnahme: Berechnet"
-                    else:
-                        ent_str = f" | Entnahme: {asset['entnahme_betrag_mtl']:.0f}€"
-                else:
-                    ent_str = ""
-                col1.write(f"**{asset['name']}**\n{asset['startwert']:,.0f}€{ent_str}")
-                if col2.button("✏️", key=f"a_e_{i}"):
-                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = (
-                        i,
-                        False,
-                    )
-                    st.session_state.global_rerun = True
-                if col3.button("🗑️", key=f"a_d_{i}"):
-                    st.session_state.assets.pop(i)
-                    st.session_state.global_rerun = True
 
         # --- 6. HAUSHALTSBUCH ---
         with st.expander("🏠 Haushaltsbuch (Ausgaben)", expanded=False):
@@ -1538,6 +1216,470 @@ def render_sidebar():
                 help="Verzinsung für den Notgroschen (z.B. Tagesgeld)."
             )
 
+        # --- 5. EINNAHMEQUELLEN ---
+        with st.expander("💰 Einnahmequellen (Rente)", expanded=False):
+            if "edit_idx" not in st.session_state:
+                st.session_state.edit_idx = None
+            if "show_add_form" not in st.session_state:
+                st.session_state.show_add_form = False
+
+            if not st.session_state.show_add_form and st.session_state.edit_idx is None:
+                if st.button("➕ Neu"):
+                    st.session_state.show_add_form = True
+                    st.session_state.global_rerun = True
+
+            if st.session_state.show_add_form or st.session_state.edit_idx is not None:
+                is_edit = st.session_state.edit_idx is not None
+                current_e = (
+                    st.session_state.einnahmen[st.session_state.edit_idx]
+                    if is_edit
+                    else {
+                        "name": "Neue Quelle",
+                        "betrag": 500.0,
+                        "typ": "Privat",
+                        "start": rentenbeginn,
+                        "ende": 2065,
+                    }
+                )
+                st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
+                f_name = st.text_input("Name", value=current_e["name"])
+                f_typ_options = [
+                    "Gesetzlich",
+                    "bAV",
+                    "Privat",
+                    "Kapital",
+                    "bAV (Einmalzahlung)",
+                    "Entnahmeplan (Vermögen)",
+                    "Sonstiges",
+                ]
+                f_typ_index = (
+                    f_typ_options.index(current_e["typ"])
+                    if current_e.get("typ") in f_typ_options
+                    else 0
+                )
+                f_typ = st.selectbox("Typ", f_typ_options, index=f_typ_index)
+
+                if f_typ == "bAV (Einmalzahlung)":
+                    f_betrag = st.number_input(
+                        "Einmalbetrag (€ Brutto)",
+                        value=float(current_e["betrag"]),
+                        min_value=0.0,
+                    )
+                    f_start = st.number_input(
+                        "Auszahlungsjahr",
+                        value=int(current_e["start"]),
+                        min_value=aktuelles_jahr,
+                    )
+                    f_ende = f_start
+                elif f_typ == "Entnahmeplan (Vermögen)":
+                    f_betrag = st.number_input(
+                        "Entnahme (€/mtl. Netto)",
+                        value=float(current_e["betrag"]),
+                        min_value=0.0,
+                    )
+                    f_start = st.number_input(
+                        "Von Jahr",
+                        value=int(current_e["start"]),
+                        min_value=aktuelles_jahr,
+                    )
+                    f_ende = st.number_input(
+                        "Bis Jahr", value=int(current_e["ende"]), min_value=f_start
+                    )
+                elif f_typ == "Gesetzlich":
+                    eingabe_modus_options = ["Euro-Betrag", "Entgeltpunkte (EP)"]
+                    current_modus = current_e.get("eingabe_modus", "euro")
+                    eingabe_modus_idx = 0 if current_modus == "euro" else 1
+
+                    f_eingabe_modus_radio = st.radio(
+                        "Eingabemodus",
+                        eingabe_modus_options,
+                        index=eingabe_modus_idx,
+                        horizontal=True,
+                    )
+
+                    if f_eingabe_modus_radio == "Entgeltpunkte (EP)":
+                        f_eingabe_modus = "punkte"
+                        f_punkte = st.number_input(
+                            "Anzahl Entgeltpunkte (lt. Renteninformation)",
+                            value=float(current_e.get("punkte", 40.0)),
+                            min_value=0.0,
+                            step=0.1,
+                        )
+                        from config import RENTENWERT_AKTUELL
+
+                        f_betrag = f_punkte * RENTENWERT_AKTUELL
+                        st.info(
+                            f"Basiswert: **{f_betrag:.2f} €/mtl.** (bei aktuellem Rentenwert, vor Abschlägen)"
+                        )
+                    else:
+                        f_eingabe_modus = "euro"
+                        f_punkte = 0.0
+                        f_betrag = st.number_input(
+                            "Betrag (€/mtl., heutige Anwartschaft lt. Renteninfo)",
+                            value=float(current_e["betrag"]),
+                            min_value=0.0,
+                            help="Nimm hier den Wert 'Bisher erreichte Rentenanwartschaft'. Der Rente-O-Mat berechnet die Hochrechnung mit der gewählten Rate (0, 1, 2%) dann automatisch.",
+                        )
+
+                    f_start = st.number_input(
+                        "Von Jahr",
+                        value=int(current_e["start"]),
+                        min_value=aktuelles_jahr,
+                    )
+                    f_ende = st.number_input(
+                        "Bis Jahr", value=int(current_e["ende"]), min_value=f_start
+                    )
+                else:
+                    f_betrag = st.number_input(
+                        "Betrag (€/mtl.)",
+                        value=float(current_e["betrag"]),
+                        min_value=0.0,
+                    )
+                    f_start = st.number_input(
+                        "Von Jahr",
+                        value=int(current_e["start"]),
+                        min_value=aktuelles_jahr,
+                    )
+                    f_ende = st.number_input(
+                        "Bis Jahr", value=int(current_e["ende"]), min_value=f_start
+                    )
+                c1, c2 = st.columns(2)
+                if c1.button("💾 Speichern"):
+                    new_data = {
+                        "name": f_name,
+                        "betrag": f_betrag,
+                        "typ": f_typ,
+                        "start": f_start,
+                        "ende": f_ende,
+                    }
+                    if f_typ == "Gesetzlich":
+                        new_data["eingabe_modus"] = f_eingabe_modus
+                        new_data["punkte"] = f_punkte
+                    if is_edit:
+                        st.session_state.einnahmen[st.session_state.edit_idx] = new_data
+                    else:
+                        st.session_state.einnahmen.append(new_data)
+                    st.session_state.edit_idx, st.session_state.show_add_form = (
+                        None,
+                        False,
+                    )
+                    st.session_state.global_rerun = True
+                if c2.button("❌ Abbrechen"):
+                    st.session_state.edit_idx, st.session_state.show_add_form = (
+                        None,
+                        False,
+                    )
+                    st.session_state.global_rerun = True
+
+            for i, e in enumerate(st.session_state.einnahmen):
+                col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+                col1.write(f"**{e['name']}**\n{e['betrag']}€")
+                if col2.button("✏️", key=f"e_{i}"):
+                    st.session_state.edit_idx, st.session_state.show_add_form = i, False
+                    st.session_state.global_rerun = True
+                if col3.button("🗑️", key=f"d_{i}"):
+                    st.session_state.einnahmen.pop(i)
+                    st.session_state.global_rerun = True
+
+        # --- 5b. VERMÖGENSWERTE ---
+        if "assets" not in st.session_state:
+            st.session_state.assets = []
+        if "asset_edit_idx" not in st.session_state:
+            st.session_state.asset_edit_idx = None
+        if "asset_show_add" not in st.session_state:
+            st.session_state.asset_show_add = False
+
+        with st.expander("💎 Vermögenswerte", expanded=False):
+            st.caption(
+                "Erfasse hier deine Depots und Konten. Diese ersetzen das bisherige globale Startvermögen für eine präzisere Simulation."
+            )
+
+            if (
+                not st.session_state.asset_show_add
+                and st.session_state.asset_edit_idx is None
+            ):
+                if st.button("➕ Neues Asset"):
+                    st.session_state.asset_show_add = True
+                    st.session_state.global_rerun = True
+
+            if (
+                st.session_state.asset_show_add
+                or st.session_state.asset_edit_idx is not None
+            ):
+                is_edit = st.session_state.asset_edit_idx is not None
+                curr = (
+                    st.session_state.assets[st.session_state.asset_edit_idx]
+                    if is_edit
+                    else {
+                        "name": "Welt-ETF",
+                        "startwert": 10000.0,
+                        "rendite_pa": 5.0,
+                        "steuertyp": "abgeltung",
+                        "teilfreistellung_pct": 30.0,
+                        "entnahme_aktiv": False,
+                        "entnahme_betrag_mtl": 500.0,
+                        "entnahme_start": aktuelles_jahr,
+                        "entnahme_ende": aktuelles_jahr + 20,
+                    }
+                )
+                st.markdown("##### " + ("Editieren" if is_edit else "Hinzufügen"))
+                a_name = st.text_input("Name", value=curr["name"], key="a_name")
+                a_start = st.number_input(
+                    "Startwert (€)",
+                    value=float(curr["startwert"]),
+                    min_value=0.0,
+                    key="a_start",
+                )
+                a_rendite = st.slider(
+                    "Rendite (% p.a.)",
+                    0.0,
+                    10.0,
+                    float(curr["rendite_pa"]),
+                    0.1,
+                    key="a_rendite",
+                )
+
+                a_steuertyp_options = {
+                    "Abgeltungsteuer": "abgeltung",
+                    "Teilfreistellung (ETF)": "teilfreistellung",
+                    "Steuerfrei": "steuerfrei",
+                }
+                a_steuertyp_display = st.selectbox(
+                    "Besteuerung",
+                    list(a_steuertyp_options.keys()),
+                    index=list(a_steuertyp_options.values()).index(curr["steuertyp"]),
+                    key="a_steuer",
+                )
+                a_steuertyp = a_steuertyp_options[a_steuertyp_display]
+
+                a_tfs = 0.0
+                if a_steuertyp == "teilfreistellung":
+                    a_tfs = st.number_input(
+                        "Teilfreistellung (%)",
+                        value=float(curr.get("teilfreistellung_pct", 30.0)),
+                        min_value=0.0,
+                        max_value=100.0,
+                        key="a_tfs",
+                    )
+
+                st.divider()
+                a_ent_aktiv = st.checkbox(
+                    "Manueller Entnahmeplan",
+                    value=curr.get("entnahme_aktiv", False),
+                    key="a_ent_aktiv",
+                )
+                if a_ent_aktiv:
+                    a_ent_mode = st.selectbox(
+                        "Entnahme-Modus",
+                        ["Fester Betrag", "Kapitalverzehr (bis Ende)"],
+                        index=0 if curr.get("entnahme_modus") == "fix" else 1,
+                        key="a_ent_mode",
+                    )
+                    a_ent_modus_val = (
+                        "fix" if a_ent_mode == "Fester Betrag" else "verzehr"
+                    )
+
+                    if a_ent_modus_val == "fix":
+                        a_ent_betrag = st.number_input(
+                            "Entnahme (€/mtl. Netto)",
+                            value=float(curr.get("entnahme_betrag_mtl", 500.0)),
+                            min_value=0.0,
+                            key="a_ent_betrag",
+                        )
+                    else:
+                        st.info(
+                            "💡 Der Betrag wird automatisch berechnet, damit das Kapital am Ende auf 0€ sinkt."
+                        )
+                        a_ent_betrag = 0.0
+
+                    a_ent_c1, a_ent_c2 = st.columns(2)
+                    a_ent_start = a_ent_c1.number_input(
+                        "Von Jahr",
+                        value=max(
+                            2000, int(curr.get("entnahme_start", aktuelles_jahr))
+                        ),
+                        min_value=2000,
+                        key="a_ent_start",
+                    )
+                    a_ent_ende = a_ent_c2.number_input(
+                        "Bis Jahr (Ende)",
+                        value=max(
+                            a_ent_start,
+                            int(curr.get("entnahme_ende", a_ent_start + 10)),
+                        ),
+                        min_value=a_ent_start,
+                        key="a_ent_ende",
+                    )
+                else:
+                    a_ent_betrag, a_ent_start, a_ent_ende, a_ent_modus_val = (
+                        0.0,
+                        aktuelles_jahr,
+                        aktuelles_jahr + 10,
+                        "fix",
+                    )
+                    if st.session_state.get("entnahme_strategie_key", "Manuell (Keine Automatik)") != "Manuell (Keine Automatik)":
+                        st.markdown("##### ⚙️ Entnahme durch Automatik")
+                        stats = get_auto_entnahme_stats(curr["name"])
+                        if stats:
+                            auto_start = str(stats["start"])
+                            auto_ende = str(stats["ende"])
+                            auto_betrag = f"{stats['betrag']:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                        else:
+                            auto_start = "—"
+                            auto_ende = "—"
+                            auto_betrag = "0,00 €"
+                        
+                        st.text_input("durchschnittlicher Betrag (€/mtl.)", value=auto_betrag, disabled=True, key=f"auto_betrag_{curr['name']}")
+                        ac_col1, ac_col2 = st.columns(2)
+                        ac_col1.text_input("Start-Jahr", value=auto_start, disabled=True, key=f"auto_start_{curr['name']}")
+                        ac_col2.text_input("End-Jahr", value=auto_ende, disabled=True, key=f"auto_ende_{curr['name']}")
+
+                ac1, ac2 = st.columns(2)
+                if ac1.button("💾 Speichern", key="a_save"):
+                    new_asset = {
+                        "name": a_name,
+                        "startwert": a_start,
+                        "rendite_pa": a_rendite,
+                        "steuertyp": a_steuertyp,
+                        "teilfreistellung_pct": a_tfs,
+                        "entnahme_aktiv": a_ent_aktiv,
+                        "entnahme_betrag_mtl": a_ent_betrag,
+                        "entnahme_start": a_ent_start,
+                        "entnahme_ende": a_ent_ende,
+                        "entnahme_modus": a_ent_modus_val,
+                    }
+                    if is_edit:
+                        st.session_state.assets[st.session_state.asset_edit_idx] = (
+                            new_asset
+                        )
+                    else:
+                        st.session_state.assets.append(new_asset)
+                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = (
+                        None,
+                        False,
+                    )
+                    st.session_state.global_rerun = True
+                if ac2.button("❌ Abbrechen", key="a_cancel"):
+                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = (
+                        None,
+                        False,
+                    )
+                    st.session_state.global_rerun = True
+
+            for i, asset in enumerate(st.session_state.assets):
+                col1, col2, col3 = st.columns([0.6, 0.2, 0.2])
+                if asset.get("entnahme_aktiv"):
+                    if asset.get("entnahme_modus") == "verzehr":
+                        ent_str = " | Entnahme: Berechnet"
+                    else:
+                        ent_str = f" | Entnahme: {asset['entnahme_betrag_mtl']:.0f}€"
+                elif st.session_state.get("entnahme_strategie_key", "Manuell (Keine Automatik)") != "Manuell (Keine Automatik)":
+                    ent_str = " | Entnahme: Automatik"
+                else:
+                    ent_str = ""
+                col1.write(f"**{asset['name']}**\n{asset['startwert']:,.0f}€{ent_str}")
+                if col2.button("✏️", key=f"a_e_{i}"):
+                    st.session_state.asset_edit_idx, st.session_state.asset_show_add = (
+                        i,
+                        False,
+                    )
+                    st.session_state.global_rerun = True
+                if col3.button("🗑️", key=f"a_d_{i}"):
+                    st.session_state.assets.pop(i)
+                    st.session_state.global_rerun = True
+
+        # --- 5c. ENTNAHMESTRATEGIE ---
+        with st.expander("🎯 Entnahmestrategie (Automatik)", expanded=False):
+            st.caption("Legt fest, wie verbleibende Deckungslücken automatisch aus deinen Vermögenswerten geschlossen werden (nachdem manuelle Pläne ausgeführt wurden).")
+
+            strategie_options = [
+                "Manuell (Keine Automatik)",
+                "Bedarfsgesteuert: Wasserfall (Priorisiert)",
+                "Bedarfsgesteuert: Pro Rata (Gleichmäßig)",
+                "Bedarfsgesteuert: Steueroptimiert (Smart)",
+                "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)",
+                "Substanzerhalt (Nur Rendite entnehmen)",
+                "Zielverzehr (Null-Landung bis Alter X)"
+            ]
+            
+            # Harmonisierung der Entnahmestrategie-Keys bei eventuellen Resten oder alten Profilen
+            current_strat = st.session_state.get("entnahme_strategie_key", "Manuell (Keine Automatik)")
+            if current_strat:
+                s = str(current_strat).strip().lower()
+                if "manuell" in s or "keine" in s:
+                    current_strat = "Manuell (Keine Automatik)"
+                elif "wasserfall" in s:
+                    current_strat = "Bedarfsgesteuert: Wasserfall (Priorisiert)"
+                elif "pro rata" in s or "prorata" in s or "gleichmäßig" in s:
+                    current_strat = "Bedarfsgesteuert: Pro Rata (Gleichmäßig)"
+                elif "steueroptimiert" in s or "smart" in s:
+                    current_strat = "Bedarfsgesteuert: Steueroptimiert (Smart)"
+                elif "prozentsatz" in s or "regelbasiert" in s or "4%" in s:
+                    current_strat = "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)"
+                elif "substanzerhalt" in s or "rendite" in s:
+                    current_strat = "Substanzerhalt (Nur Rendite entnehmen)"
+                elif "zielverzehr" in s or "null-landung" in s or "nulllandung" in s:
+                    current_strat = "Zielverzehr (Null-Landung bis Alter X)"
+                else:
+                    current_strat = "Manuell (Keine Automatik)"
+            else:
+                current_strat = "Manuell (Keine Automatik)"
+            st.session_state["entnahme_strategie_key"] = current_strat
+            
+            strat_idx = strategie_options.index(current_strat) if current_strat in strategie_options else 0
+            
+            selected_strat = st.selectbox(
+                "Globale Strategie",
+                strategie_options,
+                index=strat_idx,
+                key="entnahme_strategie_key"
+            )
+
+            # Exkludiere Assets mit aktivem manuellen Entnahmeplan von der Automatik
+            available_assets = [a for a in st.session_state.assets if not a.get("entnahme_aktiv")]
+            
+            # Zeige einen Hinweis, wenn Assets durch manuelle Entnahmen gesperrt sind
+            if len(available_assets) < len(st.session_state.assets):
+                st.info("ℹ️ **Hinweis:** Assets mit aktivem manuellen Entnahmeplan sind für die Automatik gesperrt.")
+
+            if selected_strat == "Bedarfsgesteuert: Wasserfall (Priorisiert)":
+                st.write("**Entnahme-Reihenfolge (Wasserfall)**")
+                asset_names = [a["name"] for a in available_assets]
+                current_order = st.session_state.get("entnahme_wasserfall_reihenfolge", [])
+                
+                # Nur noch existierende Assets behalten
+                current_order = [n for n in current_order if n in asset_names]
+                # Neue Assets am Ende anfügen
+                for n in asset_names:
+                    if n not in current_order:
+                        current_order.append(n)
+                
+                selected_order = st.multiselect(
+                    "Reihenfolge festlegen (zuerst gewählt = zuerst geleert)",
+                    options=asset_names,
+                    default=current_order,
+                    key="entnahme_wasserfall_reihenfolge"
+                )
+            elif selected_strat == "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)":
+                st.number_input("Jährliche Entnahme (%)", min_value=0.0, max_value=100.0, value=float(st.session_state.get("entnahme_fix_pct", 4.0)), step=0.1, key="entnahme_fix_pct")
+            elif selected_strat == "Zielverzehr (Null-Landung bis Alter X)":
+                st.number_input("Ziel-Alter", min_value=60, max_value=120, value=int(st.session_state.get("entnahme_ziel_alter", 95)), step=1, key="entnahme_ziel_alter")
+            
+            with st.popover("❓ Wie funktioniert die Automatik?"):
+                st.markdown("""
+                **Teilautomatik (Manuell + Automatik)**
+                1. Die Engine verrechnet Einnahmen, Ausgaben und Steuern.
+                2. Sie führt alle **manuellen Entnahmepläne** aus (die du in den einzelnen Vermögenswerten explizit aktiviert hast).
+                3. Entsteht danach immer noch eine **Deckungslücke (Defizit)**, springt diese **Automatik** an und zieht das fehlende Geld gemäß der hier gewählten globalen Strategie aus den verbleibenden Assets ab.
+                
+                ⚠️ **Wichtig:** Assets mit einem aktiven manuellen Entnahmeplan sind für die automatische Entnahme gesperrt, um doppelte Entnahmen oder Konflikte zu vermeiden.
+                
+                *Das gibt dir maximale Kontrolle (z.B. "Ich will Depot A bis 2035 fix verzehren") und gleichzeitig den Komfort, dass die Engine Lücken automatisch schließt.*
+                """)
+
+
+
+
         ausgaben_input = {
             kat["id"]: kat["betrag"]
             for kat in st.session_state.haushaltsbuch_kategorien
@@ -1580,4 +1722,9 @@ def render_sidebar():
             "einmalige_ausgaben": st.session_state.einmalige_ausgaben,
             "assets": st.session_state.assets,
             "haushaltsbuch_kategorien": st.session_state.haushaltsbuch_kategorien,
+            # NEUE AUTOMATISCHE STRATEGIE-KEYS
+            "entnahme_strategie": st.session_state.get("entnahme_strategie_key", "Manuell (Keine Automatik)"),
+            "entnahme_wasserfall_reihenfolge": st.session_state.get("entnahme_wasserfall_reihenfolge", []),
+            "entnahme_fix_pct": st.session_state.get("entnahme_fix_pct", 4.0),
+            "entnahme_ziel_alter": st.session_state.get("entnahme_ziel_alter", 95),
         }

@@ -49,6 +49,7 @@ p = render_sidebar()
 # --- DATEN-GENERIERUNG (Zentral für alle Tabs) ---
 jahre_liste = list(range(p["aktuelles_jahr"], p["geburtsjahr"] + 96))
 df_timeline = generate_trend_data(jahre_liste, p)
+st.session_state["df_timeline"] = df_timeline
 
 
 def get_current_meilensteine(p):
@@ -1223,8 +1224,19 @@ with tab5:
 
         # 2. Assets (Depot-Entnahmepläne)
         for a in st.session_state.get("assets", []):
+            name = a.get("name", "Welt-ETF")
+            steuertyp = a.get("steuertyp", "abgeltung")
+            if steuertyp == "abgeltung":
+                steuer_desc = "Abgeltungsteuer (25% + Soli + KiSt) auf Gewinne."
+            elif steuertyp == "teilfreistellung":
+                tfs = a.get("teilfreistellung_pct", 30.0)
+                steuer_desc = (
+                    f"Teilfreigestellt ({tfs}% steuerfrei), Rest Abgeltungsteuer."
+                )
+            else:
+                steuer_desc = "Steuerfrei."
+
             if a.get("entnahme_aktiv"):
-                name = a.get("name", "Welt-ETF")
                 start_jahr = int(a.get("entnahme_start", p["aktuelles_jahr"]))
                 ende_jahr = int(a.get("entnahme_ende", start_jahr + 10))
                 modus = a.get("entnahme_modus", "fix")
@@ -1232,17 +1244,6 @@ with tab5:
 
                 frist = "⏱️ **1 bis 2 Monate vor Beginn** einrichten (Prüfung der optimalen Auszahlungsstrategie)."
                 wo = "🏦 **Depotführende Bank / Online-Broker** (Einrichtung eines automatischen Entnahmeplans oder manueller Verkauf)."
-
-                steuertyp = a.get("steuertyp", "abgeltung")
-                if steuertyp == "abgeltung":
-                    steuer_desc = "Abgeltungsteuer (25% + Soli + KiSt) auf Gewinne."
-                elif steuertyp == "teilfreistellung":
-                    tfs = a.get("teilfreistellung_pct", 30.0)
-                    steuer_desc = (
-                        f"Teilfreigestellt ({tfs}% steuerfrei), Rest Abgeltungsteuer."
-                    )
-                else:
-                    steuer_desc = "Steuerfrei."
 
                 val_key = f"Entnahme: {name}"
                 est_val = 0.0
@@ -1274,7 +1275,7 @@ with tab5:
                     {
                         "Beginn": f"Januar {start_jahr}",
                         "Was / Typ": name,
-                        "TypName": "Depot-Entnahme",
+                        "TypName": "Depot-Entnahme (Manuell)",
                         "Wann (Zeitraum)": f"Januar {start_jahr} bis Dezember {ende_jahr}",
                         "Höhe (mtl.)": betrag_str,
                         "Antragsfrist / To-Do": frist,
@@ -1282,6 +1283,35 @@ with tab5:
                         "Hinweis": f"{steuer_desc} Depot-Entnahmen fallen nicht unter die gesetzliche Renten-KV/PV.",
                     }
                 )
+            elif p.get("entnahme_strategie", "Manuell (Keine Automatik)") != "Manuell (Keine Automatik)":
+                # Automatik ist aktiv für dieses Asset
+                val_key = f"Entnahme: {name}"
+                if val_key in df_timeline.columns:
+                    active_rows = df_timeline[df_timeline[val_key] > 0.001]
+                    if not active_rows.empty:
+                        start_jahr = int(active_rows["Jahr"].min())
+                        ende_jahr = int(active_rows["Jahr"].max())
+                        avg_betrag = active_rows[val_key].mean()
+
+                        frist = "⏱️ **1 bis 2 Monate vor Beginn einrichten** (Prüfung der optimalen Auszahlungsstrategie)."
+                        wo = "🏦 **Depotführende Bank / Online-Broker** (Einrichtung eines automatischen Entnahmeplans oder manueller Verkauf).\n\n🎯 **Verwaltet durch Entnahmestrategie (Automatik)** - kann auch durch einen manuellen Entnahmeplan ersetzt werden."
+
+                        f_avg_betrag = f"{avg_betrag:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+                        betrag_str = f"**ca. {f_avg_betrag}** mtl. (Automatisch, bedarfsabhängig)"
+
+                        entnahmen_data.append(
+                            {
+                                "Beginn": f"Januar {start_jahr}",
+                                "Was / Typ": name,
+                                "TypName": "Depot-Entnahme (Automatik)",
+                                "Wann (Zeitraum)": f"Januar {start_jahr} bis Dezember {ende_jahr}",
+                                "Höhe (mtl.)": betrag_str,
+                                "Antragsfrist / To-Do": frist,
+                                "Wo beantragen / beauftragen": wo,
+                                "Hinweis": f"{steuer_desc} Depot-Entnahmen fallen nicht unter die gesetzliche Renten-KV/PV.",
+                            }
+                        )
+
 
         if entnahmen_data:
             for item in entnahmen_data:

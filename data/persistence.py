@@ -54,12 +54,39 @@ def import_settings(json_file):
                 "rentenanpassung_rate": "renten_anp_key",
                 "bav_anpassung_rate": "bav_anp_key",
                 "startvermoegen": "startvermoegen_key",
-                "kapitalrendite": "rendite_key"
+                "kapitalrendite": "rendite_key",
+                "entnahme_strategie": "entnahme_strategie_key",
+                "entnahme_wasserfall_reihenfolge": "entnahme_wasserfall_reihenfolge",
+                "entnahme_fix_pct": "entnahme_fix_pct",
+                "entnahme_ziel_alter": "entnahme_ziel_alter"
             }
             
             for json_key, ss_key in mapping.items():
                 if json_key in data:
                     st.session_state[ss_key] = data[json_key]
+            
+            # Harmonisierung der Entnahmestrategie-Keys
+            if "entnahme_strategie_key" in st.session_state:
+                strat = st.session_state["entnahme_strategie_key"]
+                if strat:
+                    s = str(strat).strip().lower()
+                    if "manuell" in s or "keine" in s:
+                        st.session_state["entnahme_strategie_key"] = "Manuell (Keine Automatik)"
+                    elif "wasserfall" in s:
+                        st.session_state["entnahme_strategie_key"] = "Bedarfsgesteuert: Wasserfall (Priorisiert)"
+                    elif "pro rata" in s or "prorata" in s or "gleichmäßig" in s:
+                        st.session_state["entnahme_strategie_key"] = "Bedarfsgesteuert: Pro Rata (Gleichmäßig)"
+                    elif "steueroptimiert" in s or "smart" in s:
+                        st.session_state["entnahme_strategie_key"] = "Bedarfsgesteuert: Steueroptimiert (Smart)"
+                    elif "prozentsatz" in s or "regelbasiert" in s or "4%" in s:
+                        st.session_state["entnahme_strategie_key"] = "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)"
+                    elif "substanzerhalt" in s or "rendite" in s:
+                        st.session_state["entnahme_strategie_key"] = "Substanzerhalt (Nur Rendite entnehmen)"
+                    elif "zielverzehr" in s or "null-landung" in s or "nulllandung" in s:
+                        st.session_state["entnahme_strategie_key"] = "Zielverzehr (Null-Landung bis Alter X)"
+                    else:
+                        st.session_state["entnahme_strategie_key"] = "Manuell (Keine Automatik)"
+
             
             # Spezialfall: Rentenbeginn (Dezimaljahr) in Jahr und Monat aufteilen
             if "rentenbeginn" in data:

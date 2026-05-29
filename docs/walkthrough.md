@@ -185,5 +185,68 @@ Die Basis ist damit grundsolide. Für eine zukünftige Iteration stehen dann Fea
   - Der globale **"Alle Sammel-Kat." Button** wurde präzise unter diesem Divider und unmittelbar oberhalb der Gruppen platziert.
 - **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B4"` angehoben.
 
+## 23. Automatische Entnahmepläne - Phase 1: UI-Integration & Persistenz (Build 00B5)
+- **UI-Integration der Entnahmestrategie:** In der Sidebar wurde direkt unter "💎 Vermögenswerte" eine neue Sektion **"🎯 Entnahmestrategie (Automatik)"** integriert.
+- **Globale Strategie-Auswahl:** Ein Dropdown ermöglicht die Wahl zwischen allen 7 konzipierten Strategien:
+  - `Manuell (Keine Automatik)`
+  - `Bedarfsgesteuert: Wasserfall (Priorisiert)`
+  - `Bedarfsgesteuert: Pro Rata (Gleichmäßig)`
+  - `Bedarfsgesteuert: Steueroptimiert (Smart)`
+  - `Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)`
+  - `Substanzerhalt (Nur Rendite entnehmen)`
+  - `Zielverzehr (Null-Landung bis Alter X)`
+- **Dynamische Konfiguration:** Je nach gewählter Strategie erscheinen maßgeschneiderte Eingabeelemente:
+  - Bei *Wasserfall* wird ein Multiselect angezeigt, in dem alle vorhandenen Vermögenswerte per Drag-and-Drop in die gewünschte Entnahme-Reihenfolge gebracht werden können.
+  - Bei *Fixer Prozentsatz* kann die Entnahmerate (%) frei definiert werden (Default: `4.0 %`).
+  - Bei *Zielverzehr* kann das genaue Ziel-Alter für die Null-Landung eingegeben werden (Default: `95`).
+- **Erweiterte Hilfe (Popover):** Ein kompakter Button (`❓ Wie funktioniert die Automatik?`) erklärt das Konzept der **Teilautomatik**. So versteht der Nutzer sofort, dass manuelle Pläne Vorrang haben und die Automatik lediglich die verbleibende Lücke (Defizit) schließt.
+- **Daten-Persistenz & Export:** Die gewählte Strategie (`entnahme_strategie`), die Wasserfall-Reihenfolge (`entnahme_wasserfall_reihenfolge`), der feste Prozentsatz (`entnahme_fix_pct`) und das Ziel-Alter (`entnahme_ziel_alter`) werden sauber im Profil (JSON) gespeichert und beim Hochladen eines Profils zuverlässig in den `session_state` restauriert.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B5"` angehoben.
 
+## 24. Automatische Entnahmepläne - Phase 2: Engine-Logik & Teilautomatik (Build 00B6)
+- **Implementierung in der Finanz-Engine:** Die Simulationsschleife `generate_trend_data` in `logic/engine.py` wurde umfassend überarbeitet, um alle 6 konzipierten automatischen Entnahmestrategien nativ zu berechnen.
+- **Nahtlose Teilautomatik:** Die Engine prüft in jedem Berechnungszeitraum (unter Berücksichtigung von Phasenübergängen wie ATZ-Splits), ob nach Abzug aller manuellen Eintritten ein verbleibendes Defizit existiert. Ist dies der Fall (oder ist eine regelbasierte Entnahme aktiv), greift die Automatik vollautomatisch ein.
+- **Die 6 Entnahmestrategien im Detail:**
+  - **Bedarfsgesteuert: Wasserfall (Priorisiert):** Entnimmt das Defizit exakt in der vom Nutzer im Multiselect festgelegten Depot-Reihenfolge. Assets werden der Reihe nach vollständig geleert, bevor das nächste Asset herangezogen wird.
+  - **Bedarfsgesteuert: Pro Rata (Gleichmäßig):** Ermittelt in jedem Schritt das Gesamtvermögen aller Depots und zieht das Defizit absolut simultan und gewichtet nach dem jeweiligen Kapitalstand ab.
+  - **Bedarfsgesteuert: Steueroptimiert (Smart):** Priorisiert den Vermögensverzehr nach steuerlichen Gesichtspunkten (1. `steuerfreie` Assets, 2. `teilfreigestellte` Assets mit Teilfreistellungs-Vorteil, 3. regulär `abgeltungsteuerpflichtige` Depots).
+  - **Regelbasiert: Fixer Prozentsatz (4%-Regel):** Entnimmt unabhängig vom aktuellen Bedarf einen festen Prozentsatz (z.B. `5%` p.a.) aus allen Assets. Übersteigt die Entnahme das Defizit, fließt der Überschuss automatisch in die Liquidität (Reinvest); reicht sie nicht, wird das verbleibende Defizit am Jahresende über die Cash-Reserven gedeckt.
+  - **Substanzerhalt (Nur Rendite):** Berechnet mathematisch präzise die erwirtschaftete Nettorendite (nach Steuern) jedes Depots in der aktuellen Periode (`cap * (r / (1 + r)) * weight`) und entnimmt maximal diesen Renditezuwachs, um das Ursubstanz-Kapital vollständig unangetastet zu lassen.
+  - **Zielverzehr (Null-Landung bis Alter X):** Ermittelt in jedem Jahr das verbleibende Alter bis zur Null-Landung (z.B. Alter `95`) und errechnet die exakte annuitätische Verzehrrate (mit Zinseszins-Berücksichtigung) pro Asset, sodass das gesamte Portfolio am Zielalter exakt bei 0,00 € landet.
+- **Ergebnis-Aktualisierung & Visualisierung:** Die gezogenen Beträge werden als `Entnahme: AssetName` in die Simulationsergebnisse eingetragen. Dadurch werden sie **vollautomatisch im Sankey-Diagramm** sowie in den **Entwicklungscharts** visualisiert. Das Netto-Einkommen und der Jahressaldo werden korrekt angepasst.
+- **Unit-Tests zur Qualitätssicherung:** In `tests/test_engine.py` wurde eine umfassende Testsuite (`test_automatic_withdrawals`) hinzugefügt, die Wasserfall, Pro Rata und Fixe Prozentsätze mit exakten mathematischen Erwartungswerten prüft. Alle **23 Tests laufen zu 100% grün** durch.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B6"` angehoben.
+
+## 25. Parameter-Rückgabe-Bugfix & Sidebar-Reorganisation (Build 00B7)
+- **Parameter-Bugfix der Entnahmestrategie:** Der Fehler, dass die ausgewählte Entnahmestrategie und deren Konfigurationsparameter (Wasserfall-Reihenfolge, Prozentsatz, Zielalter) keine Auswirkung in der Simulation zeigten, wurde behoben. Die Funktion `render_sidebar` (in `ui/sidebar.py`) übergab diese Schlüssel zuvor nicht an das zurückgegebene Parameter-Dictionary `p`. Jetzt werden sie vollautomatisch und typsicher aus dem Streamlit Session-State extrahiert und der Engine bereitgestellt.
+- **Sidebar-Reorganisation:** Um einen kompakteren, logischeren Lesefluss zu gewährleisten, wurde die Reihenfolge der Sidebar-Sektionen grundlegend überarbeitet. Die Vermögens- und Entnahmeseite befindet sich nun geschlossen ganz unten:
+  1. `👤 Profil`
+  2. `🎓 Meilensteine`
+  3. `💶 Erwerbseinnahmen` (zuvor "Finanzen Aktuell")
+  4. `🏠 Haushaltsbuch (Ausgaben)`
+  5. `📅 Befristete & Einmalige Ausgaben`
+  6. `⚙️ Annahmen (Dynamik)`
+  7. `💸 Einnahmequellen (Rente)`
+  8. `💎 Vermögenswerte`
+  9. `🎯 Entnahmestrategie (Automatik)`
+- **Umbenennung:** Die Sektion „Finanzen Aktuell“ wurde passend in **„Erwerbseinnahmen“** umbenannt, da hier das monatliche Brutto- und Nettoeinkommen während der Aktivphase gepflegt wird.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B7"` angehoben.
+
+## 26. Sperrung manueller Assets & Key-Harmonisierung (Build 00B8)
+- **Sperrung manueller Assets für die Automatik:** Um doppelte Entnahmen und Planungskonflikte auszuschließen, wurde ein wichtiger Ausschlussmechanismus implementiert:
+  - **In der Engine (`logic/engine.py`):** Jedes Asset mit einem aktiven manuellen Entnahmeplan (`entnahme_aktiv = True`) wird während der aktiven Entnahmejahre vollautomatisch aus den verfügbaren Assets für die globale Automatik ausgeblendet.
+  - **Im UI (`ui/sidebar.py`):** Es wird ein Informationsfeld angezeigt, wenn Assets durch manuelle Entnahmen gesperrt sind. Zudem werden solche Assets automatisch aus dem Multiselect-Menü der Wasserfall-Reihenfolge herausgefiltert.
+  - **Detaillierte Erklärung:** Die Hilfe-Informationen im Popover (`❓ Wie funktioniert die Automatik?`) wurden um einen klaren Warn- und Informationshinweis zu dieser Ausschlussregel erweitert.
+- **Strategie-Key-Harmonisierung (Wegfall-Bugfix):** Es wurde behoben, dass unter bestimmten Bedingungen (wie dem Laden älterer Profile oder beim Wechsel der Strategie) Einträge in der Auswahlliste verschwanden oder Streamlit-Widgets sich blockierten. Eine robuste Normalisierungs- und Harmonisierungslogik (in `data/persistence.py` und `ui/sidebar.py`) gleicht nun alle historischen oder verkürzten Schlüsselnamen (z. B. `"Manuell"`, `"Wasserfall"`, `"Zielverzehr"`) vollautomatisch und abwärtssicher an die genauen Dropdown-Bezeichnungen an.
+- **Versions-Build-ID:** Die Build-ID wurde lückenlos und sauber auf `"00B8"` angehoben.
+
+## 27. Phase 2 Korrekturen: UI & Stats (Build 00B9)
+- **Umbenennung "Manueller Entnahmeplan":** Die Aktivierungs-Checkbox im Editier-Formular eines einzelnen Assets wurde passend von *"Entnahmeplan aktivieren"* in **"Manueller Entnahmeplan"** umbenannt, um die Unterscheidung zur Automatik glasklar zu machen.
+- **Anzeige "Entnahme: Automatik" in der Asset-Übersicht:** Assets, die nicht manuell entnommen werden und stattdessen von der globalen Entnahmestrategie (Automatik) verwaltet werden, weisen in der Sidebar-Übersichtsliste nun prominent den Status **"Entnahme: Automatik"** auf.
+- **Entnahme durch Automatik im Asset-Edit:** Wenn ein Asset von der Automatik verwaltet wird (d. h. der manuelle Entnahmeplan ist inaktiv und eine globale automatische Strategie wurde gewählt), wird im Editier-Bereich unter der nicht gecheckten Checkbox eine neue Sektion **"Entnahme durch Automatik"** eingeblendet. Diese zeigt die dynamic simulation stats aus der echten Berechnung (durchschnittlich entnommener Betrag pro Monat, Start-Jahr und End-Jahr) in ausgegrauten (disabled) Eingabefeldern an.
+- **Timeline-Synchronisation:** Die Timeline-Daten werden in `st.session_state` hinterlegt, damit das Sidebar-UI diese dynamischen Werte bei jedem Rerun direkt aus der echten Berechnung ausliest.
+- **Erweiterte Testabdeckung:** Ein neues Testmodul `tests/test_sidebar_helpers.py` wurde hinzugefügt, um die Ermittlung der automatischen Entnahmestatistiken mit `pytest` vollständig abzusichern.
+
+## 28. Phase 2 Korrekturen: Briefing Text-Fix (Build 00BA)
+- **Korrektur automatischer Entnahmeplan-Hinweise:** Es wurde ein inhaltlicher Fehler bei den ausgegebenen To-Do- und Beantragungshinweisen für automatische Vermögensentnahmen behoben. Zuvor gab die App fälschlicherweise an, dass die Rente-O-Mat-Engine diese Entnahmen bei der Bank vollautomatisch steuern würde. Dies wurde nun durch einen realistischen Hinweis auf die notwendige manuelle Einrichtung bei der depotführenden Bank oder dem Online-Broker (1 bis 2 Monate vor Beginn) sowie eine Erläuterung bezüglich der verwalteten Entnahmestrategie und der Ersetzbarkeit durch einen manuellen Entnahmeplan ersetzt.
 

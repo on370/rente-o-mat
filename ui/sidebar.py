@@ -261,6 +261,7 @@ def render_sidebar():
                 "inflation_rate": st.session_state.get("infl_rate_key", 2.0),
                 "rentenanpassung_rate": st.session_state.get("renten_anp_key", 2.0),
                 "bav_anpassung_rate": st.session_state.get("bav_anp_key", 1.0),
+                "gehalts_dynamik": st.session_state.get("gehalts_dyn_key", 1.0),
                 "reinvest_target": st.session_state.get("reinvest_target_key", ""),
                 "liquidity_reserve": st.session_state.get("liq_reserve_key", 10000.0),
                 "liquidity_yield": st.session_state.get("liq_yield_key", 0.0),
@@ -440,7 +441,7 @@ def render_sidebar():
             try:
                 _, be_jahr, be_alter = calculate_break_even_data(be_params)
                 be_info = f"{be_alter} J. ({be_jahr})" if be_jahr else "Nicht erreicht"
-            except:
+            except Exception:
                 be_info = "Berechnung läuft..."
 
             info_text = f"""
@@ -1596,7 +1597,7 @@ def render_sidebar():
                 "Manuell (Keine Automatik)",
                 "Bedarfsgesteuert: Wasserfall (Priorisiert)",
                 "Bedarfsgesteuert: Pro Rata (Gleichmäßig)",
-                "Bedarfsgesteuert: Steueroptimiert (Smart)",
+                "Bedarfsgesteuert: Steuergünstig (Steuerfreie zuerst)",
                 "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)",
                 "Substanzerhalt (Nur Rendite entnehmen)",
                 "Zielverzehr (Null-Landung bis Alter X)"
@@ -1612,8 +1613,8 @@ def render_sidebar():
                     current_strat = "Bedarfsgesteuert: Wasserfall (Priorisiert)"
                 elif "pro rata" in s or "prorata" in s or "gleichmäßig" in s:
                     current_strat = "Bedarfsgesteuert: Pro Rata (Gleichmäßig)"
-                elif "steueroptimiert" in s or "smart" in s:
-                    current_strat = "Bedarfsgesteuert: Steueroptimiert (Smart)"
+                elif "steueroptimiert" in s or "smart" in s or "steuergünstig" in s or "steuerguenstig" in s:
+                    current_strat = "Bedarfsgesteuert: Steuergünstig (Steuerfreie zuerst)"
                 elif "prozentsatz" in s or "regelbasiert" in s or "4%" in s:
                     current_strat = "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)"
                 elif "substanzerhalt" in s or "rendite" in s:

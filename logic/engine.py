@@ -35,6 +35,34 @@ def get_phase(jahr, atz_simulieren, atz_start, rentenbeginn):
         return "Rente"
 
 
+def get_netto_rendite(cfg, kirchensteuer_satz):
+    """
+    Berechnet die Netto-Rendite eines Assets nach Abgeltungsteuer, Soli und Kirchensteuer.
+    """
+    r_brutto = cfg.get("rendite_pa", 0.0) / 100.0
+    if r_brutto <= 0:
+        return 0.0
+        
+    steuertyp = cfg.get("steuertyp", "steuerfrei")
+    if steuertyp == "steuerfrei":
+        return r_brutto
+        
+    kist_satz = kirchensteuer_satz
+    if kist_satz > 0:
+        eff_satz = 0.25 / (1.0 + kist_satz)
+    else:
+        eff_satz = 0.25
+        
+    tax_factor = eff_satz * (1.0 + 0.055 + kist_satz)
+    
+    if steuertyp == "teilfreistellung":
+        tfs = cfg.get("teilfreistellung_pct", 30.0) / 100.0
+        tax_factor *= (1.0 - tfs)
+        
+    r_netto = r_brutto * (1.0 - tax_factor)
+    return r_netto
+
+
 def _dynamisiere_betrag(basisbetrag, startjahr, aktuelles_jahr, steigerung_pct):
     """Erhöht einen Betrag jährlich um einen Prozentsatz ab dem Startjahr. (Harte Jahressprünge)"""
     jahre = int(aktuelles_jahr) - int(startjahr)
@@ -293,7 +321,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         from logic.taxes import berechne_abgeltungsteuer
         for a_s in assets_state:
             cfg = a_s["config"]
-            gewinn = a_s["kapital"] * (cfg["rendite_pa"] / 100.0)
+            gewinn = a_s["kapital"] * (cfg["rendite_pa"] / 100.0) * segment_weight
             st = 0.0
             if cfg["steuertyp"] == "abgeltung":
                 st_pfl = max(0.0, gewinn - sparer_pausch_frei)
@@ -307,12 +335,14 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
                 st = berechne_abgeltungsteuer(st_pfl, kirchensteuer_satz, sparerpauschbetrag=0)
             
             a_s["kapital"] += gewinn - st
+            a_s["period_netto_gewinn"] = gewinn - st
+            
             if cfg.get("entnahme_aktiv") and jahr_float >= cfg.get("entnahme_start", 0) and jahr_float <= cfg.get("entnahme_ende", 9999):
                 # Unterscheidung: Fixer Betrag vs. Kapitalverzehr (Annuität)
                 if cfg.get("entnahme_modus") == "verzehr":
                     rem_years = max(1, int(cfg.get("entnahme_ende", jahr_float) - jahr_float + 1))
                     if rem_years > 0:
-                        r = cfg.get("rendite_pa", 0.0) / 100
+                        r = get_netto_rendite(cfg, kirchensteuer_satz)
                         if r > 0:
                             # Annuitätenformel (nachschüssig, da Verzinsung bereits erfolgt)
                             # Rate = K * (r / (1 - (1+r)^-n))
@@ -325,9 +355,9 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
                 else:
                     ent_mtl = cfg.get("entnahme_betrag_mtl", 0.0)
 
-                eff_e_jahr = min(ent_mtl * 12, a_s["kapital"])
+                eff_e_jahr = min(ent_mtl * 12 * segment_weight, a_s["kapital"])
                 a_s["kapital"] -= eff_e_jahr
-                ent_actual_mtl = eff_e_jahr / 12
+                ent_actual_mtl = (eff_e_jahr / 12) / segment_weight
                 asset_netto_einnahmen += ent_actual_mtl
                 income_details[f"Entnahme: {cfg['name']}"] = ent_actual_mtl
             
@@ -396,7 +426,7 @@ def generate_trend_data(jahre, params):
 
     # Virtuelles Asset für Cashflow-Überschüsse
     liquiditaet = {"name": "Cash-Reserven (kum.)", "kapital": 0.0, 
-                   "config": {"name": "Cash-Reserven (kum.)", "rendite_pa": liq_yield, "steuertyp": "steuerfrei", "entnahme_aktiv": False}}
+                   "config": {"name": "Cash-Reserven (kum.)", "rendite_pa": liq_yield, "steuertyp": "abgeltung", "entnahme_aktiv": False}}
     assets_state.append(liquiditaet)
 
     data = []
@@ -512,7 +542,9 @@ def generate_trend_data(jahre, params):
                                 
                 elif entnahme_strategie == "Bedarfsgesteuert: Pro Rata (Gleichmäßig)":
                     if current_deficit > 0:
-                        while current_deficit > 0.0001:
+                        iterations = 0
+                        while current_deficit > 0.0001 and iterations < 10:
+                            iterations += 1
                             total_cap = sum(max(0.0, a["kapital"]) for a in user_assets)
                             if total_cap <= 0:
                                 break
@@ -538,7 +570,7 @@ def generate_trend_data(jahre, params):
                                     res["Überschuss/Defizit"] += withdrawn_mtl
 
                                 
-                elif entnahme_strategie == "Bedarfsgesteuert: Steueroptimiert (Smart)":
+                elif entnahme_strategie in ["Bedarfsgesteuert: Steueroptimiert (Smart)", "Bedarfsgesteuert: Steuergünstig (Steuerfreie zuerst)"]:
                     if current_deficit > 0:
                         def steuer_sort_key(asset):
                             stype = asset["config"].get("steuertyp", "steuerfrei")
@@ -586,18 +618,16 @@ def generate_trend_data(jahre, params):
                         ordered_assets = sorted(user_assets, key=sort_key)
                         
                         for asset in ordered_assets:
-                            r = asset["config"].get("rendite_pa", 0.0) / 100.0
-                            if r > 0:
-                                cap = max(0.0, asset["kapital"])
-                                max_withdrawable_yield = cap * (r / (1.0 + r)) * weight
-                                withdrawn = min(current_deficit, max_withdrawable_yield, cap)
-                                if withdrawn > 0:
-                                    asset["kapital"] -= withdrawn
-                                    current_deficit -= withdrawn
-                                    withdrawn_mtl = (withdrawn / 12) / weight
-                                    res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
-                                    res["Netto-Einkommen"] += withdrawn_mtl
-                                    res["Überschuss/Defizit"] += withdrawn_mtl
+                            cap = max(0.0, asset["kapital"])
+                            period_netto = max(0.0, asset.get("period_netto_gewinn", 0.0))
+                            withdrawn = min(current_deficit, period_netto, cap)
+                            if withdrawn > 0:
+                                asset["kapital"] -= withdrawn
+                                current_deficit -= withdrawn
+                                withdrawn_mtl = (withdrawn / 12) / weight
+                                res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
+                                res["Netto-Einkommen"] += withdrawn_mtl
+                                res["Überschuss/Defizit"] += withdrawn_mtl
                             if current_deficit <= 0.0001:
                                 break
                                 
@@ -608,7 +638,7 @@ def generate_trend_data(jahre, params):
                     
                     for asset in user_assets:
                         cap = max(0.0, asset["kapital"])
-                        r = asset["config"].get("rendite_pa", 0.0) / 100.0
+                        r = get_netto_rendite(asset["config"], params.get("kirchensteuer_satz", 0.0))
                         if r > 0:
                             annual_withdrawal = cap * (r / (1.0 - (1.0 + r)**(-rem_years)))
                         else:
@@ -620,9 +650,9 @@ def generate_trend_data(jahre, params):
                             res[f"Entnahme: {asset['name']}"] = res.get(f"Entnahme: {asset['name']}", 0.0) + withdrawn_mtl
                             res["Netto-Einkommen"] += withdrawn_mtl
                             res["Überschuss/Defizit"] += withdrawn_mtl
-
+ 
             # 2. Überschuss/Defizit des Jahres behandeln
-
+ 
             # Korrektur: Wir reinvestieren nur den "echten" Überschuss, der NICHT aus Asset-Entnahmen stammt.
             # Sonst entsteht ein Loop, wenn ein Asset mit Entnahmeplan gleichzeitig Reinvest-Ziel ist.
             entnahmen_aus_assets = sum(v for k, v in res.items() if k.startswith("Entnahme: "))
@@ -639,7 +669,7 @@ def generate_trend_data(jahre, params):
                 if jahres_saldo > 0 and reinvest_target_name != "— Keine (nur Cash-Reserven) —":
                     # In Ziel-Asset investieren
                     target_asset = next((a for a in assets_state if a["name"] == reinvest_target_name), None)
-                    if target_asset:
+                    if target_asset and (entnahme_strategie == "Manuell (Keine Automatik)" or target_asset not in user_assets):
                         target_asset["kapital"] += jahres_saldo
                         jahres_saldo = 0
                 

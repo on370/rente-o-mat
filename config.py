@@ -1,6 +1,6 @@
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 STAGE = "[rel]"
-BUILD_ID = "00BA"  # Phase 2 Korrekturen: Text-Korrektur automatischer Entnahmeplan im Briefing-Tab (Depotbank-Hinweis statt fälschlicher Rente-O-Mat-Automatik)
+BUILD_ID = "00BC"  # Behebung der Findings aus dem Delta-Audit (v1.5.0, Build 00BA)
 
 # Aktueller Rentenwert ab 1. Juli 2025 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 40.79

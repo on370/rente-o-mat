@@ -53,6 +53,10 @@ def import_settings(json_file):
                 "inflation_rate": "infl_rate_key",
                 "rentenanpassung_rate": "renten_anp_key",
                 "bav_anpassung_rate": "bav_anp_key",
+                "gehalts_dynamik": "gehalts_dyn_key",
+                "reinvest_target": "reinvest_target_key",
+                "liquidity_reserve": "liq_reserve_key",
+                "liquidity_yield": "liq_yield_key",
                 "startvermoegen": "startvermoegen_key",
                 "kapitalrendite": "rendite_key",
                 "entnahme_strategie": "entnahme_strategie_key",
@@ -76,8 +80,8 @@ def import_settings(json_file):
                         st.session_state["entnahme_strategie_key"] = "Bedarfsgesteuert: Wasserfall (Priorisiert)"
                     elif "pro rata" in s or "prorata" in s or "gleichmäßig" in s:
                         st.session_state["entnahme_strategie_key"] = "Bedarfsgesteuert: Pro Rata (Gleichmäßig)"
-                    elif "steueroptimiert" in s or "smart" in s:
-                        st.session_state["entnahme_strategie_key"] = "Bedarfsgesteuert: Steueroptimiert (Smart)"
+                    elif "steueroptimiert" in s or "smart" in s or "steuergünstig" in s or "steuerguenstig" in s:
+                        st.session_state["entnahme_strategie_key"] = "Bedarfsgesteuert: Steuergünstig (Steuerfreie zuerst)"
                     elif "prozentsatz" in s or "regelbasiert" in s or "4%" in s:
                         st.session_state["entnahme_strategie_key"] = "Regelbasiert: Fixer Prozentsatz (z.B. 4%-Regel)"
                     elif "substanzerhalt" in s or "rendite" in s:
@@ -86,6 +90,27 @@ def import_settings(json_file):
                         st.session_state["entnahme_strategie_key"] = "Zielverzehr (Null-Landung bis Alter X)"
                     else:
                         st.session_state["entnahme_strategie_key"] = "Manuell (Keine Automatik)"
+
+            # Synchronisiere Kirchensteuer-Display-Key
+            if "kist_key" in st.session_state:
+                val = st.session_state["kist_key"]
+                if val == 0.08:
+                    st.session_state["kist_display_key"] = "8% (Bayern, BW)"
+                elif val == 0.09:
+                    st.session_state["kist_display_key"] = "9% (Restl. Bundesländer)"
+                else:
+                    st.session_state["kist_display_key"] = "Keine"
+
+            # Synchronisiere Rentenanpassung-Display-Key
+            if "renten_anp_key" in st.session_state:
+                val = st.session_state["renten_anp_key"]
+                if val == 0.0:
+                    st.session_state["renten_anp_display_key"] = "0% (Pessimistisch)"
+                elif val == 1.0:
+                    st.session_state["renten_anp_display_key"] = "1% (Moderat)"
+                else:
+                    st.session_state["renten_anp_display_key"] = "2% (Standard)"
+
 
             
             # Spezialfall: Rentenbeginn (Dezimaljahr) in Jahr und Monat aufteilen

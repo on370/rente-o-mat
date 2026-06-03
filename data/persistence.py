@@ -62,7 +62,10 @@ def import_settings(json_file):
                 "entnahme_strategie": "entnahme_strategie_key",
                 "entnahme_wasserfall_reihenfolge": "entnahme_wasserfall_reihenfolge",
                 "entnahme_fix_pct": "entnahme_fix_pct",
-                "entnahme_ziel_alter": "entnahme_ziel_alter"
+                "entnahme_ziel_alter": "entnahme_ziel_alter",
+                "entnahme_start_modus": "entnahme_start_modus",
+                "entnahme_start_jahr": "entnahme_start_jahr",
+                "entnahme_start_monat": "entnahme_start_monat"
             }
             
             for json_key, ss_key in mapping.items():

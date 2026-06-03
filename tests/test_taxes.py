@@ -27,6 +27,17 @@ def test_est_tarif_2025():
     for zve, expected in tests:
         assert berechne_einkommensteuer(zve, 2025) == expected
 
+def test_est_tarif_2026():
+    """Prüft den Einkommensteuertarif 2026 gemäß Steuerfortentwicklungsgesetz (abgerundet)."""
+    tests = [
+        (12348, 0.0),      # Grundfreibetrag
+        (30000, 4217.0),
+        (50000, 10548.0),
+        (100000, 30864.0)
+    ]
+    for zve, expected in tests:
+        assert berechne_einkommensteuer(zve, 2026) == expected
+
 def test_est_tarif_2024():
     """Prüft den Einkommensteuertarif 2024 gemäß § 32a EStG (abgerundet)."""
     tests = [

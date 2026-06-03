@@ -36,6 +36,20 @@ SV_PARAMETER = {
         "rate_kv_rentner": 0.073,
         "rate_kv_rentner_zusatz": 0.0085,
     },
+    2026: {
+        "bbg_kv": 5812.50,
+        "bbg_rv": 8450.00,
+        "rate_kv_an": 0.073,
+        "rate_kv_zusatz": 0.0145,
+        "rate_pv_basis": 0.018,
+        "rate_pv_kinderlos_zuschlag": 0.006,
+        "rate_pv_abschlag_je_kind": 0.0025,
+        "rate_rv_an": 0.093,
+        "rate_alv_an": 0.013,
+        "bav_freibetrag_kv": 197.75,
+        "rate_kv_rentner": 0.073,
+        "rate_kv_rentner_zusatz": 0.0145,
+    },
 }
 
 def _get_sv_params(jahr):

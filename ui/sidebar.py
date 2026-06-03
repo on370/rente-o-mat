@@ -1646,7 +1646,6 @@ def render_sidebar():
                     current_strat = "Manuell (Keine Automatik)"
             else:
                 current_strat = "Manuell (Keine Automatik)"
-            st.session_state["entnahme_strategie_key"] = current_strat
             
             strat_idx = strategie_options.index(current_strat) if current_strat in strategie_options else 0
             
@@ -1656,6 +1655,33 @@ def render_sidebar():
                 index=strat_idx,
                 key="entnahme_strategie_key"
             )
+
+            if selected_strat != "Manuell (Keine Automatik)":
+                st.markdown("##### ⏱️ Start der Automatik")
+                start_modus_options = [
+                    "Sofort (ab aktuellem Jahr)",
+                    "Ab Rentenbeginn",
+                    "Individuell (Jahr/Monat)"
+                ]
+                if st.session_state.get("atz_sim_input"):
+                    start_modus_options.insert(2, "Ab ATZ-Beginn")
+                    
+                current_start_modus = st.session_state.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)")
+                if current_start_modus not in start_modus_options:
+                    current_start_modus = "Sofort (ab aktuellem Jahr)"
+                start_idx = start_modus_options.index(current_start_modus)
+                
+                start_modus = st.selectbox(
+                    "Wann soll die automatische Entnahme frühestens greifen?",
+                    start_modus_options,
+                    index=start_idx,
+                    key="entnahme_start_modus"
+                )
+                
+                if start_modus == "Individuell (Jahr/Monat)":
+                    col1, col2 = st.columns(2)
+                    col1.number_input("Start-Jahr", min_value=aktuelles_jahr, max_value=2100, value=int(st.session_state.get("entnahme_start_jahr", aktuelles_jahr)), step=1, key="entnahme_start_jahr")
+                    col2.number_input("Start-Monat", min_value=1, max_value=12, value=int(st.session_state.get("entnahme_start_monat", 1)), step=1, key="entnahme_start_monat")
 
             # Exkludiere Assets mit aktivem manuellen Entnahmeplan von der Automatik
             available_assets = [a for a in st.session_state.assets if not a.get("entnahme_aktiv")]
@@ -1749,4 +1775,7 @@ def render_sidebar():
             "entnahme_wasserfall_reihenfolge": st.session_state.get("entnahme_wasserfall_reihenfolge", []),
             "entnahme_fix_pct": st.session_state.get("entnahme_fix_pct", 4.0),
             "entnahme_ziel_alter": st.session_state.get("entnahme_ziel_alter", 95),
+            "entnahme_start_modus": st.session_state.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)"),
+            "entnahme_start_jahr": st.session_state.get("entnahme_start_jahr", aktuelles_jahr),
+            "entnahme_start_monat": st.session_state.get("entnahme_start_monat", 1),
         }

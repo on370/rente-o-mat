@@ -38,6 +38,21 @@ TARIF_PARAMETER = {
         "zone5_faktor": 0.45,
         "zone5_abzug": 19246.67,
     },
+    2026: {
+        "grundfreibetrag": 12348,
+        "zone2_ende": 17799,
+        "zone3_ende": 69878,
+        "zone4_ende": 277825,
+        "zone2_a": 914.51,
+        "zone2_b": 1400,
+        "zone3_a": 173.10,
+        "zone3_b": 2397,
+        "zone3_c": 1034.87,
+        "zone4_faktor": 0.42,
+        "zone4_abzug": 11135.63,
+        "zone5_faktor": 0.45,
+        "zone5_abzug": 19470.38,
+    },
 }
 
 # --- Steuerliche Pauschbeträge ---

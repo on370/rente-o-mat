@@ -1,12 +1,12 @@
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 STAGE = "[rel]"
-BUILD_ID = "00BC"  # Behebung der Findings aus dem Delta-Audit (v1.5.0, Build 00BA)
+BUILD_ID = "00C0"  # Individueller Start Monats-Split Fix
 
-# Aktueller Rentenwert ab 1. Juli 2025 (einheitlich West/Ost)
-RENTENWERT_AKTUELL = 40.79
+# Aktueller Rentenwert ab 1. Juli 2026 (einheitlich West/Ost)
+RENTENWERT_AKTUELL = 42.52
 
-# Vorläufiges Durchschnittsentgelt 2025 (zur Berechnung von Entgeltpunkten)
-DURCHSCHNITTSENTGELT_AKTUELL = 50493.0
+# Vorläufiges Durchschnittsentgelt 2026 (zur Berechnung von Entgeltpunkten)
+DURCHSCHNITTSENTGELT_AKTUELL = 51944.0
 
 FULL_VERSION = f"{VERSION} {STAGE} (build {BUILD_ID})"
 DATENSCHUTZ_INFO = """

@@ -42,6 +42,19 @@ def test_sv_rentner():
     sv_bav = berechne_sv_rentner([{"name": "bAV", "betrag": 600, "typ": "bAV"}], 2025, 0)
     assert pytest.approx(sv_bav["Gesamt"], 0.5) == kv_bav_exp + pv_bav_exp
 
+def test_sv_rentner_2026():
+    """Prüft die SV-Beiträge für Rentner im Jahr 2026 (neue Parameter)."""
+    sv_r = berechne_sv_rentner([{"name": "GRV", "betrag": 2000, "typ": "Gesetzlich"}], 2026, 0)
+    kv_r_exp = 2000 * (0.073 + 0.0145)  # Neuer Zusatzbeitrag 1.45%
+    pv_r_exp = 2000 * (0.018 + 0.006)
+    assert pytest.approx(sv_r["Gesamt"], 0.5) == kv_r_exp + pv_r_exp
+
+    bav_pfl = max(0, 600 - 197.75) # Neuer Freibetrag 197.75
+    kv_bav_exp = bav_pfl * (0.073*2 + 0.0145*2)
+    pv_bav_exp = bav_pfl * (0.018 + 0.006) * 2
+    sv_bav = berechne_sv_rentner([{"name": "bAV", "betrag": 600, "typ": "bAV"}], 2026, 0)
+    assert pytest.approx(sv_bav["Gesamt"], 0.5) == kv_bav_exp + pv_bav_exp
+
 def test_sv_rentner_doppel_bav():
     """Prüft die einmalige Anwendung des Freibetrags bei zwei bAV-Bezugsquellen (M3)."""
     # Summe bAV = 800 EUR. Einmaliger Freibetrag 187.25.

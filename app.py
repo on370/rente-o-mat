@@ -1293,18 +1293,23 @@ with tab5:
                         ende_jahr = int(active_rows["Jahr"].max())
                         avg_betrag = active_rows[val_key].mean()
 
+                        first_row = active_rows.iloc[0]
+                        start_t_val = first_row.get("start_t", float(start_jahr))
+                        start_str = fmt_jahr_monat_de(start_t_val)
+
                         frist = "⏱️ **1 bis 2 Monate vor Beginn einrichten** (Prüfung der optimalen Auszahlungsstrategie)."
-                        wo = "🏦 **Depotführende Bank / Online-Broker** (Einrichtung eines automatischen Entnahmeplans oder manueller Verkauf).\n\n🎯 **Verwaltet durch Entnahmestrategie (Automatik)** - kann auch durch einen manuellen Entnahmeplan ersetzt werden."
+                        start_modus = p.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)")
+                        wo = f"🏦 **Depotführende Bank / Online-Broker** (Einrichtung eines automatischen Entnahmeplans oder manueller Verkauf).\n\n🎯 **Verwaltet durch Entnahmestrategie (Automatik)** - Startet frühestens: {start_modus}."
 
                         f_avg_betrag = f"{avg_betrag:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
                         betrag_str = f"**ca. {f_avg_betrag}** mtl. (Automatisch, bedarfsabhängig)"
 
                         entnahmen_data.append(
                             {
-                                "Beginn": f"Januar {start_jahr}",
+                                "Beginn": start_str,
                                 "Was / Typ": name,
                                 "TypName": "Depot-Entnahme (Automatik)",
-                                "Wann (Zeitraum)": f"Januar {start_jahr} bis Dezember {ende_jahr}",
+                                "Wann (Zeitraum)": f"{start_str} bis Dezember {ende_jahr}",
                                 "Höhe (mtl.)": betrag_str,
                                 "Antragsfrist / To-Do": frist,
                                 "Wo beantragen / beauftragen": wo,

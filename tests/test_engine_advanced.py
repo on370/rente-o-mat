@@ -133,3 +133,63 @@ def test_zielverzehr_strategy():
     
     # Das Asset muss exakt bei 0.0 landen
     assert pytest.approx(df.loc[0, "ASSET_VAL_Ziel Depot"], abs=1e-5) == 0.0
+
+
+def test_individual_start_transition():
+    """
+    Prüft, ob die automatische Entnahme bei individuellem Start (z.B. September 2028)
+    exakt im gewählten Monat startet und das Jahr korrekt gesplittet wird (M10).
+    """
+    test_params = {
+        'geburtsjahr': 1965,
+        'aktuelles_jahr': 2026,
+        'rentenbeginn': 2035.0,
+        'aktuelles_brutto': 0.0,
+        'kinderzahl': 0,
+        'kirchensteuer_satz': 0.0,
+        'inflation_rate': 0.0,
+        'rentenanpassung_rate': 0.0,
+        'bav_anpassung_rate': 1.0,
+        'gehalts_dynamik': 0.0,
+        'atz_simulieren': False,
+        'atz_start': 9999,
+        'einnahmen': [],
+        'ausgaben_kategorien': ["Lebenshaltung"],
+        'ausgaben_input': {"Lebenshaltung": 1000.0},
+        'anpassungsfaktor_input': {"Lebenshaltung": 100},
+        'befristete_ausgaben': [],
+        'einmalige_ausgaben': [],
+        'assets': [
+            {"name": "Depot A", "startwert": 100000.0, "rendite_pa": 0.0, "steuertyp": "steuerfrei", "entnahme_aktiv": False}
+        ],
+        'entnahme_strategie': 'Bedarfsgesteuert: Wasserfall (Priorisiert)',
+        'entnahme_wasserfall_reihenfolge': ["Depot A"],
+        'entnahme_start_modus': 'Individuell (Jahr/Monat)',
+        'entnahme_start_jahr': 2028,
+        'entnahme_start_monat': 9, # September
+        'reinvest_target': '— Keine (nur Cash-Reserven) —',
+        'liquidity_reserve': 0.0,
+        'liquidity_yield': 0.0
+    }
+
+    # Wir generieren Daten für 2028. Da im September (9) gestartet wird,
+    # muss das Jahr 2028 gesplittet sein in:
+    # 1. Segment: Jan-Aug (8 Monate) -> Keine Entnahme
+    # 2. Segment: Sep-Dez (4 Monate) -> Entnahme aktiv
+    df = generate_trend_data([2028], test_params)
+    
+    # Es müssen exakt zwei Segmente für das Jahr 2028 existieren
+    assert len(df) == 2
+    
+    # Erstes Segment: Beginn 2028.0 (Januar) bis 2028.666667 (Ende August)
+    row_1 = df.iloc[0]
+    assert pytest.approx(row_1["start_t"]) == 2028.0
+    assert pytest.approx(row_1["end_t"]) == 2028.0 + 8/12
+    assert row_1.get("Entnahme: Depot A", 0.0) == 0.0
+    
+    # Zweites Segment: Beginn 2028.666667 (September) bis 2029.0 (Ende Dezember)
+    row_2 = df.iloc[1]
+    assert pytest.approx(row_2["start_t"]) == 2028.0 + 8/12
+    assert pytest.approx(row_2["end_t"]) == 2029.0
+    assert row_2.get("Entnahme: Depot A", 0.0) > 0.0
+

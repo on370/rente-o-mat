@@ -448,6 +448,23 @@ def generate_trend_data(jahre, params):
         if t_event % 1 != 0:
             transitions_global.append(t_event)
 
+    # Entnahme-Automatik Startzeitpunkt als Übergangspunkt registrieren
+    entnahme_strategie = params.get("entnahme_strategie", "Manuell (Keine Automatik)")
+    if entnahme_strategie != "Manuell (Keine Automatik)":
+        start_modus = params.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)")
+        start_float = 0.0
+        if start_modus == "Ab Rentenbeginn":
+            start_float = float(params.get("rentenbeginn", 0))
+        elif start_modus == "Ab ATZ-Beginn":
+            start_float = float(params.get("atz_start", 0))
+        elif start_modus == "Individuell (Jahr/Monat)":
+            sj = float(params.get("entnahme_start_jahr", params.get("aktuelles_jahr", 2026)))
+            sm = float(params.get("entnahme_start_monat", 1))
+            start_float = sj + (sm - 1) / 12.0
+        
+        if start_float % 1 != 0:
+            transitions_global.append(start_float)
+
     for j in jahre:
         # Finde Übergänge in DIESEM Jahr
         transitions = [t for t in transitions_global if j < t < j + 1]
@@ -498,6 +515,20 @@ def generate_trend_data(jahre, params):
             entnahme_strategie = params.get("entnahme_strategie", "Manuell (Keine Automatik)")
             jahr_float = res.get("Jahr_Float", float(res["Jahr"]))
             
+            # Startzeitpunkt berechnen
+            start_modus = params.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)")
+            start_float = 0.0
+            if start_modus == "Ab Rentenbeginn":
+                start_float = float(params.get("rentenbeginn", 0))
+            elif start_modus == "Ab ATZ-Beginn":
+                start_float = float(params.get("atz_start", 0))
+            elif start_modus == "Individuell (Jahr/Monat)":
+                sj = float(params.get("entnahme_start_jahr", params.get("aktuelles_jahr", 2026)))
+                sm = float(params.get("entnahme_start_monat", 1))
+                start_float = sj + (sm - 1) / 12.0
+            
+            is_active_now = (jahr_float >= start_float - 0.001)
+            
             user_assets = []
             for a in assets_state:
                 if a["name"] == "Cash-Reserven (kum.)":
@@ -512,7 +543,7 @@ def generate_trend_data(jahre, params):
                 if not manuelle_aktiv:
                     user_assets.append(a)
             
-            if entnahme_strategie != "Manuell (Keine Automatik)" and user_assets:
+            if entnahme_strategie != "Manuell (Keine Automatik)" and user_assets and is_active_now:
                 current_deficit = -res["Überschuss/Defizit"] * 12 * weight
                 geburtsjahr = params.get("geburtsjahr", 1965)
 

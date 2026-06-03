@@ -1348,6 +1348,7 @@ with tab5:
 
         **Rechtsstand:**
         Die Steuerberechnung erfolgt iterativ pro Jahr. Es wird ein Näherungsverfahren für das zu versteuernde Einkommen (zvE) angewandt, das den Abzug von Vorsorgeaufwendungen (gemäß EStG 2024) simuliert. Die Altersteilzeit berücksichtigt die gesetzliche Mindestaufstockung in der Rentenversicherung auf 80 % (§ 3 AltTZG).
+        **Hinweis zur Besteuerung von Kapitalentnahmen:** Steuer auf Kapitalgewinne wird in der Simulation jährlich pauschal auf die Rendite berechnet und abgezogen. Entnahmen aus automatischen Strategien oder manuellen Entnahmeplänen werden bei Entnahme nicht erneut besteuert (vereinfachtes Verfahren).
         """
         st.markdown(params_md)
 

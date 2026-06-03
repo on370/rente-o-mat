@@ -597,6 +597,13 @@ def render_sidebar():
                         # Delete
                         if st.button("🗑️ Löschen", key=f"del_{item['id']}_{st.session_state.uploader_id}", use_container_width=True):
                             st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != item["id"]]
+                            # Fix M5: Bereinige befristete und einmalige Ausgaben
+                            for ba in st.session_state.befristete_ausgaben:
+                                if ba.get("kategorie") == item["id"]:
+                                    ba["kategorie"] = ""
+                            for ea in st.session_state.einmalige_ausgaben:
+                                if ea.get("kategorie") == item["id"]:
+                                    ea["kategorie"] = ""
                             c_key = f"c_{item['id']}"
                             a_key = f"a_{item['id']}"
                             if c_key in st.session_state:
@@ -679,6 +686,13 @@ def render_sidebar():
                                     if child.get("parent_id") == item["id"]:
                                         child["parent_id"] = None
                                 st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != item["id"]]
+                                # Fix M5: Bereinige befristete und einmalige Ausgaben
+                                for ba in st.session_state.befristete_ausgaben:
+                                    if ba.get("kategorie") == item["id"]:
+                                        ba["kategorie"] = ""
+                                for ea in st.session_state.einmalige_ausgaben:
+                                    if ea.get("kategorie") == item["id"]:
+                                        ea["kategorie"] = ""
                                 st.session_state.global_rerun = True
                                 st.rerun()
                     
@@ -716,6 +730,13 @@ def render_sidebar():
                                     # Delete
                                     if st.button("🗑️ Löschen", key=f"del_{child['id']}_{st.session_state.uploader_id}", use_container_width=True):
                                         st.session_state.haushaltsbuch_kategorien = [k for k in st.session_state.haushaltsbuch_kategorien if k["id"] != child["id"]]
+                                        # Fix M5: Bereinige befristete und einmalige Ausgaben
+                                        for ba in st.session_state.befristete_ausgaben:
+                                            if ba.get("kategorie") == child["id"]:
+                                                ba["kategorie"] = ""
+                                        for ea in st.session_state.einmalige_ausgaben:
+                                            if ea.get("kategorie") == child["id"]:
+                                                ea["kategorie"] = ""
                                         c_key = f"c_{child['id']}"
                                         a_key = f"a_{child['id']}"
                                         if c_key in st.session_state:

@@ -22,15 +22,14 @@ def test_regelaltersgrenze():
 
 def test_monate_frueher():
     """Prüft die vorzeitigen Rentenbezugsmonate vor der RAG."""
-    # GJ 1965: RAG = 67
-    assert berechne_monate_frueher(1965, 2032.0) == 0      # Punktlandung RAG
-    assert berechne_monate_frueher(1965, 2030.0) == 24     # 2 Jahre früher
+    assert berechne_monate_frueher(1965, 2032.0 + 1/12) == 0      # Punktlandung RAG
+    assert berechne_monate_frueher(1965, 2030.0 + 1/12) == 24     # 2 Jahre früher
     
     # Geburtsjahr 1966, Rentenbeginn Februar 2031 (2031 + 1/12)
-    # Geburtsmonat Februar (2) -> RAG = Februar 2033. Rentenbeginn Februar 2031 -> exakt 24 Monate früher!
-    assert berechne_monate_frueher(1966, 2031 + 1/12, geburtsmonat=2) == 24
-    # Geburtsmonat Januar (1) -> RAG = Januar 2033. Rentenbeginn Februar 2031 -> 23 Monate früher!
-    assert berechne_monate_frueher(1966, 2031 + 1/12, geburtsmonat=1) == 23
+    # Geburtsmonat Februar (2) -> RAG = Februar 2033. Standardrentenbeginn März 2033. Rentenbeginn Februar 2031 -> exakt 25 Monate früher!
+    assert berechne_monate_frueher(1966, 2031 + 1/12, geburtsmonat=2) == 25
+    # Geburtsmonat Januar (1) -> RAG = Januar 2033. Standardrentenbeginn Februar 2033. Rentenbeginn Februar 2031 -> exakt 24 Monate früher!
+    assert berechne_monate_frueher(1966, 2031 + 1/12, geburtsmonat=1) == 24
 
 def test_ep_pro_jahr():
     """Prüft die Ermittlung der Entgeltpunkte."""

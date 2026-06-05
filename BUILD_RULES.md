@@ -87,6 +87,9 @@ Da in der Vergangenheit durch Prototyping, bulk commits und decimal slips Abweic
 | **`00C8`** | Regulär | Timeline Einnahmen & Entfernung Obsoleter Typen | Behebung der Timeline-Filterung in `app.py`, um alle Einnahmen anzuzeigen (Verhinderung des Ausblendens bei Koinzidenz mit Rentenbeginn). Entfernung des obsoleten Typs "Entnahmeplan (Vermögen)" aus der Sidebar. |
 | **`00C9`** | Regulär | Streamlit Widget Lifecycle Stabilisierung | Stabilisierung der Widget-Werte für die Entnahmeautomatik durch Umstellung auf manuelles Schreiben in `st.session_state` ohne `key`-Zuweisung, um dynamic resets zu umgehen. |
 | **`00CA`** | Regulär | Persistenz Entnahmeautomatik Start | Vollständige JSON-Export-Persistenz für `entnahme_start_modus`, `entnahme_start_jahr` und `entnahme_start_monat` in `ui/sidebar.py`. Hinzufügen von Unit-Test-Abdeckung in `tests/test_persistence.py`. |
+| **`00CB`** | Regulär | QA-Befunde & Abzüge vom Brutto | Behebung des Rentenabschlag-Off-by-One Fehlers (+1 Monat). Einführung des neuen Features "Abzüge vom Brutto" (bAV-Entgeltumwandlung) im UI, in der Engine, im Sankey und in der Datenpersistenz. Korrektur der Einheiten-Inkonsistenz der bAV-Einmalzahlung (Trennung im Sankey und monatliche Normalisierung im Trend-Chart). Hinzufügen von Unit-Tests. |
+| **`00CC`** | Regulär | Sankey-Breite & Abzüge-Farbe | Umstellung aller Streamlit Plotly-Charts auf `use_container_width=True` zur Behebung von Breiten-Abschneidungen. Anpassung der `create_sankey` Knotenhöhe und Hinzufügen der roten Farbkodierung für Abzugs-Nodes. |
+
 
 
 

@@ -14,7 +14,7 @@ def test_engine_ruhestand():
     test_params = {
         'geburtsjahr': 1965,
         'aktuelles_jahr': 2026,
-        'rentenbeginn': 2032.0,
+        'rentenbeginn': 2033.0,
         'aktuelles_brutto': 6000.0,
         'kinderzahl': 0,
         'kirchensteuer_satz': 0.0,
@@ -119,4 +119,52 @@ def test_automatic_withdrawals():
     df_pct = generate_trend_data([2026], test_params)
     assert df_pct.loc[0, "ASSET_VAL_Depot A"] == 9500.0
     assert df_pct.loc[0, "ASSET_VAL_Depot B"] == 9500.0
+
+
+def test_abzuege_brutto():
+    """Prüft, ob Abzüge vom Brutto das Steuer-/SV-pflichtige Brutto und Netto mindern sowie Rentenpunkte reduzieren."""
+    test_params = {
+        'geburtsjahr': 1965,
+        'aktuelles_jahr': 2026,
+        'rentenbeginn': 2035.0,
+        'aktuelles_brutto': 6000.0,
+        'abzuege_brutto': 500.0,
+        'kinderzahl': 0,
+        'kirchensteuer_satz': 0.0,
+        'inflation_rate': 0.0,
+        'rentenanpassung_rate': 0.0,
+        'bav_anpassung_rate': 1.0,
+        'gehalts_dynamik': 0.0,
+        'atz_simulieren': False,
+        'atz_start': 9999,
+        'einnahmen': [],
+        'ausgaben_kategorien': [],
+        'ausgaben_input': {},
+        'befristete_ausgaben': [],
+        'einmalige_ausgaben': [],
+    }
+    
+    # 1. Berechne ohne Abzüge
+    params_no_ded = test_params.copy()
+    params_no_ded['abzuege_brutto'] = 0.0
+    res_no_ded = calculate_financials_for_year(2027, params_no_ded)
+    
+    # 2. Berechne mit Abzügen
+    res_ded = calculate_financials_for_year(2027, test_params)
+    
+    # Brutto-Einkommens-Wert (Auszahlungsbrutto) soll bei beiden gleich sein
+    assert res_no_ded["Brutto"] == 6000.0
+    assert res_ded["Brutto"] == 6000.0
+    
+    # Steuer und SV-pflichtiges Brutto ist reduziert, daher müssen Steuern und SV niedriger sein
+    assert res_ded["EkSt"] < res_no_ded["EkSt"]
+    assert res_ded["Sozialabgaben"] < res_no_ded["Sozialabgaben"]
+    
+    # Netto-Einkommen muss bei Abzügen niedriger sein (Brutto - Steuern - SV - Abzug)
+    assert res_ded["Netto-Einkommen"] < res_no_ded["Netto-Einkommen"]
+    
+    # Die Abzüge müssen im Resultat-Dict erfasst sein
+    assert res_ded["Abzuege_Brutto"] == 500.0
+    assert res_no_ded["Abzuege_Brutto"] == 0.0
+
 

@@ -58,7 +58,7 @@ def render_sidebar():
         
     regel_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
     def_beginn_jahr = geburtsjahr + regel_jahre
-    def_beginn_monat = geburtsmonat + rag_monate
+    def_beginn_monat = geburtsmonat + rag_monate + 1
     if def_beginn_monat > 12:
         def_beginn_jahr += 1
         def_beginn_monat -= 12
@@ -90,6 +90,7 @@ def render_sidebar():
         "reinvest_target_key": "— Keine (nur Cash-Reserven) —",
         "liq_reserve_key": 10000.0,
         "liq_yield_key": 0.0,
+        "abzuege_brutto_key": 0.0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -275,6 +276,7 @@ def render_sidebar():
                 "entnahme_start_modus": st.session_state.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)"),
                 "entnahme_start_jahr": st.session_state.get("entnahme_start_jahr", aktuelles_jahr),
                 "entnahme_start_monat": st.session_state.get("entnahme_start_monat", 1),
+                "abzuege_brutto": st.session_state.get("abzuege_brutto_key", 0.0),
             }
             json_str = export_settings(export_params)
 
@@ -304,7 +306,7 @@ def render_sidebar():
         # --- 3. MEILENSTEINE ---
         rag_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
         default_jahr = geburtsjahr + rag_jahre
-        default_monat = rag_monate + 1  # +1 weil Monate 1-12
+        default_monat = geburtsmonat + rag_monate + 1
         if default_monat > 12:
             default_jahr += 1
             default_monat -= 12
@@ -390,7 +392,8 @@ def render_sidebar():
             )
 
             rentenanpassung_rate = st.session_state.get("renten_anp_key", 2.0)
-            brutto_fuer_ep = st.session_state.get("brutto_key", 6000.0)
+            abzuege_brutto = st.session_state.get("abzuege_brutto_key", 0.0)
+            brutto_fuer_ep = max(0.0, st.session_state.get("brutto_key", 6000.0) - abzuege_brutto)
             ep_pro_jahr = berechne_ep_pro_jahr(brutto_fuer_ep, aktuelles_jahr)
 
             # K7/M1: Präzise EP-Akkumulation unter Berücksichtigung der ATZ (80% Aufstockung)
@@ -488,6 +491,13 @@ def render_sidebar():
                 key="brutto_key",
                 help="Dein aktuelles monatliches Bruttogehalt (als Basis für die Aktivphase).",
             )
+            abzuege_brutto = st.number_input(
+                "Abzüge vom Brutto (mtl.)",
+                min_value=0.0,
+                step=50.0,
+                key="abzuege_brutto_key",
+                help="Abzüge, die direkt das steuer- und sozialversicherungspflichtige Bruttogehalt mindern (wie z. B. eine betriebliche Altersvorsorge per Entgeltumwandlung). Diese mindern das steuerbare Bruttogehalt in der Aktivphase und reduzieren somit das simulierte Netto sowie die gesammelten Rentenpunkte.",
+            )
             atz_aufst = st.slider(
                 "ATZ-Aufst. % (vom halben Brutto)",
                 20,
@@ -502,6 +512,7 @@ def render_sidebar():
             # Minimaler params-dict für die Engine
             tmp_params = {
                 "aktuelles_brutto": aktuelles_brutto,
+                "abzuege_brutto": abzuege_brutto,
                 "atz_aufstockung_pct": atz_aufst,
                 "kinderzahl": kinderzahl,
                 "kirchensteuer_satz": kirchensteuer_satz,
@@ -530,11 +541,16 @@ def render_sidebar():
             aktuelles_netto = st.number_input(
                 "Netto/mtl. (Optional)",
                 key="netto_key",
-                help="Dein echtes ausgezahltes Netto. Wird nur für das Status-Quo-Sankey ganz oben verwendet, um Abweichungen zu erkennen.",
+                help="Dein echtes ausgezahltes Netto (z.B. aus der Gehaltsabrechnung). Wird nur für das Status-Quo-Sankey ganz oben verwendet, um Abweichungen zu erkennen. Tipp: Du kannst Abweichungen im Simulations-Netto minimieren, indem du das Feld 'Abzüge vom Brutto' oben ausfüllst.",
             )
             show_values = st.checkbox(
                 "Werte im Sankey zeigen",
                 key="show_vals_key",
+            )
+            sv_details_sankey = st.checkbox(
+                "Sozialabgaben aufschlüsseln",
+                key="sv_details_sankey_key",
+                help="Zeigt im Sankey-Diagramm die einzelnen Bestandteile (KV, PV, RV, ALV) anstelle einer großen Sammelkategorie."
             )
 
         # --- 6. HAUSHALTSBUCH ---
@@ -1760,6 +1776,7 @@ def render_sidebar():
             "anpassungsfaktor_input": anpassungsfaktor_input,
             "einnahmen": st.session_state.einnahmen,
             "show_values": show_values,
+            "sv_details_sankey": sv_details_sankey,
             "ausgaben_kategorien": alle_kategorien,
             "aktuelles_jahr": aktuelles_jahr,
             "kinderzahl": kinderzahl,
@@ -1783,4 +1800,5 @@ def render_sidebar():
             "entnahme_start_modus": st.session_state.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)"),
             "entnahme_start_jahr": st.session_state.get("entnahme_start_jahr", aktuelles_jahr),
             "entnahme_start_monat": st.session_state.get("entnahme_start_monat", 1),
+            "abzuege_brutto": st.session_state.get("abzuege_brutto_key", 0.0),
         }

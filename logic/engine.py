@@ -87,7 +87,7 @@ def _calculate_grv_components(jahr_float, e, params):
     rentenbeginn = params.get('rentenbeginn', geburtsjahr + 67)
     
     monate_frueher = berechne_monate_frueher(geburtsjahr, rentenbeginn, geburtsmonat)
-    brutto_voll = params.get('aktuelles_brutto', 0)
+    brutto_voll = max(0.0, params.get('aktuelles_brutto', 0.0) - params.get('abzuege_brutto', 0.0))
     ep_pro_jahr_voll = berechne_ep_pro_jahr(brutto_voll, aktuelles_jahr)
     
     if e.get("eingabe_modus") == "punkte":
@@ -197,6 +197,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
     kist = 0.0
     netto = 0.0
     grv_netto = 0.0
+    abzuege_phase = 0.0
     
     # Phasenunabhängige Vorverarbeitung der Einmalzahlungen (z.B. bAV Auszahlung vor Rentenbeginn)
     einmalzahlungen_bav = []
@@ -216,24 +217,28 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
     if phase == "Aktiv" or "ATZ" in phase:
         # Dynamisierung Gehalt (K6-Fix/L2)
         brutto_base = params.get('aktuelles_brutto', 0.0)
+        abzuege_base = params.get('abzuege_brutto', 0.0)
         brutto_dyn = _dynamisiere_betrag(brutto_base, params.get('aktuelles_jahr', 2026), jahr, params.get('gehalts_dynamik', 1.0))
+        abzuege_dyn = _dynamisiere_betrag(abzuege_base, params.get('aktuelles_jahr', 2026), jahr, params.get('gehalts_dynamik', 1.0))
 
         if phase == "Aktiv":
-            brutto_st = brutto_dyn
-            brutto_auszahlung = brutto_st
-            income_details["Gehalt"] = brutto_st
+            brutto_st = max(0.0, brutto_dyn - abzuege_dyn)
+            brutto_auszahlung = brutto_dyn
+            income_details["Gehalt"] = brutto_dyn
             from logic.sozialversicherung import berechne_sv_aktiv
             sv_dict = berechne_sv_aktiv(brutto_st, jahr, kinderzahl)
             aufstockung = 0.0
+            abzuege_phase = abzuege_dyn
         else: # ATZ
-            h_br = brutto_dyn / 2
+            h_br = max(0.0, brutto_dyn - abzuege_dyn) / 2
             aufstockung = h_br * (params.get('atz_aufstockung_pct', 20) / 100)
             brutto_st = h_br
-            brutto_auszahlung = h_br + aufstockung
-            income_details["Gehalt (ATZ)"] = h_br
+            brutto_auszahlung = (brutto_dyn / 2) + aufstockung
+            income_details["Gehalt (ATZ)"] = brutto_dyn / 2
             income_details["Aufstockung"] = aufstockung
             from logic.sozialversicherung import berechne_sv_atz
             sv_dict = berechne_sv_atz(h_br, jahr, kinderzahl)
+            abzuege_phase = abzuege_dyn / 2
 
         b_g, sv = brutto_auszahlung, sv_dict["Gesamt"]
         va_jahr = berechne_vorsorgeaufwendungen_steuerlich(brutto_st, jahr, phase="Aktiv")
@@ -247,7 +252,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
             
         soli = berechne_soli(steuer_ekst * 12, jahr=jahr) / 12
         kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
-        netto = b_g - steuer_ekst - soli - kist - sv
+        netto = b_g - steuer_ekst - soli - kist - sv - abzuege_phase
 
     else: # Phase: Rente
         from logic.taxes import berechne_rentensteuer_anteil, berechne_ertragsanteil, berechne_einkommensteuer, berechne_abgeltungsteuer, berechne_fuenftelregelung
@@ -326,17 +331,16 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         kapitalzuwachs_sonder += netto_ez
         _debug_sonderzuwachs_details.append({
             "name": ez_item["name"],
+            "gross": ez,
+            "tax": m_ekst,
             "betrag": netto_ez,
             "reinvest_target": ez_item["reinvest_target"]
         })
         
-        # Einmalzahlungen werden als voller Betrag angezeigt
-        mtl_factor = 12.0 * segment_weight
-        b_g += ez
-        steuer_ekst += m_ekst
-        income_details[ez_item["name"]] = ez 
+        # Für das Trend-Chart wird der monatliche Äquivalentwert (EZ / 12) hinterlegt
+        income_details[ez_item["name"]] = ez / 12.0
         
-    netto = b_g - steuer_ekst - soli - kist - sv
+    # netto wird nicht durch die Einmalzahlung verändert (bleibt rein laufend)
     
     if phase == "Rente":
         # Isolierte Netto-GRV für Strategie-Check (K5-Fix)
@@ -444,6 +448,8 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         "Überschuss/Defizit": netto - ausgaben, "Rentenabschlag": rentenabschlag_gesamt,
         "Beitragsverlust": beitragsverlust_gesamt, "Gesetzliche Rente (Potenzial)": potential_gesamt,
         "Kapitalzuwachs_Sonder": kapitalzuwachs_sonder,
+        "Abzuege_Brutto": abzuege_phase,
+        "SV_Details": sv_dict if phase == "Aktiv" or "ATZ" in phase else (locals().get("sv_res") or {}),
         "_debug_Sonderzuwachs_Details": _debug_sonderzuwachs_details,
         "_debug_zve": zve_jahr,
         "_debug_st_b": st_b * 12 if phase == "Rente" else b_g * 12,
@@ -728,12 +734,8 @@ def generate_trend_data(jahre, params):
             # Sonst entsteht ein Loop, wenn ein Asset mit Entnahmeplan gleichzeitig Reinvest-Ziel ist.
             entnahmen_aus_assets = sum(v for k, v in res.items() if k.startswith("Entnahme: "))
             
-            # Da Einmalzahlungen jetzt in voller Höhe im Netto (und damit Überschuss) stecken,
-            # müssen wir diese für die Berechnung des monatlichen, laufenden Saldos herausrechnen.
-            netto_einmalzahlung_jahr = res.get("Kapitalzuwachs_Sonder", 0.0)
-            
-            # Laufender monatlicher Überschuss ohne Einmalzahlung und ohne Asset-Entnahmen
-            laufender_ueberschuss_mtl = res["Überschuss/Defizit"] - entnahmen_aus_assets - netto_einmalzahlung_jahr
+            # Laufender monatlicher Überschuss ohne Asset-Entnahmen (Einmalzahlungen sind bereits getrennt)
+            laufender_ueberschuss_mtl = res["Überschuss/Defizit"] - entnahmen_aus_assets
             
             # Der normale Jahressaldo (laufender Überschuss hochgerechnet auf das Segment)
             jahres_saldo = laufender_ueberschuss_mtl * 12 * weight
@@ -803,7 +805,7 @@ def calculate_break_even_data(params):
     
     geburtsmonat = params.get("geburtsmonat", 1)
     rag_jahre, rag_monate = berechne_regelaltersgrenze(geburtsjahr)
-    rag = geburtsjahr + rag_jahre + ((geburtsmonat - 1 + rag_monate) / 12)
+    rag = geburtsjahr + rag_jahre + ((geburtsmonat - 1 + rag_monate + 1) / 12)
     
     params_a = params.copy()
     params_b = params.copy()

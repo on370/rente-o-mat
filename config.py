@@ -1,6 +1,6 @@
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 STAGE = "[rel]"
-BUILD_ID = "00CA"  # Fix Entnahmeautomatik Start JSON persistence
+BUILD_ID = "00CD"  # Social Payments expandable
 
 # Aktueller Rentenwert ab 1. Juli 2026 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 42.52

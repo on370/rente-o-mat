@@ -65,7 +65,8 @@ def import_settings(json_file):
                 "entnahme_ziel_alter": "entnahme_ziel_alter",
                 "entnahme_start_modus": "entnahme_start_modus",
                 "entnahme_start_jahr": "entnahme_start_jahr",
-                "entnahme_start_monat": "entnahme_start_monat"
+                "entnahme_start_monat": "entnahme_start_monat",
+                "abzuege_brutto": "abzuege_brutto_key"
             }
             
             for json_key, ss_key in mapping.items():

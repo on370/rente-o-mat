@@ -370,8 +370,9 @@ with tab1:
                 p["show_values"],
                 group_names,
                 leaf_names,
+                height=500,
             ),
-            width="stretch",
+            use_container_width=True,
         )
         with st.expander("Daten zum Status Quo anzeigen"):
             import pandas as pd
@@ -533,13 +534,27 @@ with tab1:
             is_active_year = (e.get("start", 0) <= jahr_float <= e.get("ende", 9999)) or (e.get("typ") == "bAV (Einmalzahlung)" and int(jahr_float) == int(e["start"]))
             if is_active_year:
                 val = res.get(e["name"], 0.0)
-                if val > 0 and e["typ"] != "Gesetzlich":
+                if val > 0 and e["typ"] != "Gesetzlich" and e["typ"] != "bAV (Einmalzahlung)":
                     add_r(e["name"], "Brutto", val)
 
         # NEU: Entnahmen aus Assets im Sankey anzeigen
         for k, v in res.items():
             if k.startswith("Entnahme: ") and v > 0:
                 add_r(k, "Brutto", v)
+
+        # bAV-Einmalzahlungen als separate, vollständige Flüsse in voller Höhe im Sankey
+        for sz in res.get("_debug_Sonderzuwachs_Details", []):
+            sz_name = sz["name"] + " (Einmalzahlung)"
+            sz_target = sz["reinvest_target"]
+            if sz_target == "global" or sz_target == "Gemäß globaler Einstellung":
+                sz_target = p.get("reinvest_target", "— Keine (nur Cash-Reserven) —")
+            if sz_target == "— Keine (nur Cash-Reserven) —":
+                sz_target = "Cash-Reserven"
+            else:
+                sz_target = f"Reinvest: {sz_target}"
+                
+            add_r(sz_name, "Einkommensteuer (bAV-EZ)", sz["tax"])
+            add_r(sz_name, sz_target, sz["betrag"])
 
         # GRV: Aggregierter Potenzial-Flow
         if pot > 0:
@@ -585,7 +600,17 @@ with tab1:
         if res["KiSt"] > 0:
             add_r("Brutto", "Kirchensteuer", res["KiSt"])
         if res["Sozialabgaben"] > 0:
-            add_r("Brutto", "Sozialabgaben", res["Sozialabgaben"])
+            if p.get("sv_details_sankey", False):
+                sv_details = res.get("SV_Details", {})
+                for sv_type in ["KV", "PV", "RV", "ALV"]:
+                    val = sv_details.get(sv_type, 0.0)
+                    if val > 0:
+                        add_r("Brutto", f"Sozialabgaben", val)
+                        add_r("Sozialabgaben", f"SV ({sv_type})", val)
+            else:
+                add_r("Brutto", "Sozialabgaben", res["Sozialabgaben"])
+        if res.get("Abzuege_Brutto", 0.0) > 0:
+            add_r("Brutto", "Abzüge vom Brutto (bAV, VWL etc.)", res["Abzuege_Brutto"])
 
         add_r("Brutto", "Netto-Einkommen", res["Netto-Einkommen"])
         add_r("Netto-Einkommen", "Verfügbares Budget", res["Netto-Einkommen"])
@@ -657,8 +682,9 @@ with tab1:
                 p["show_values"],
                 group_names,
                 leaf_names,
+                height=600,
             ),
-            width="stretch",
+            use_container_width=True,
         )
         with st.expander(f"Details zum Zeitraum {selected_label} anzeigen"):
             # Relevante Zeilen aus 'res' extrahieren
@@ -719,7 +745,7 @@ with tab2:
 
     st.plotly_chart(
         create_trend_chart(df_timeline, meilensteine, show_tax_rate=show_tax_rate),
-        width="stretch",
+        use_container_width=True,
     )
 
     with st.expander("Datentabelle anzeigen"):
@@ -755,7 +781,7 @@ with tab3:
     st.caption(
         "Die Grafik zeigt die Entwicklung einzelner Assets sowie den kumulierten Cashflow (Liquidität)."
     )
-    st.plotly_chart(create_wealth_chart(df_timeline), width="stretch")
+    st.plotly_chart(create_wealth_chart(df_timeline), use_container_width=True)
 
     with st.expander("Vermögensdaten anzeigen"):
         # Finde alle Asset-Spalten
@@ -793,7 +819,7 @@ with tab4:
                 "Kein Break-Even-Punkt innerhalb der Simulation (bis Alter 100) gefunden. Ein früherer Eintritt scheint in diesem Szenario langfristig vorteilhafter oder der Unterschied ist zu gering."
             )
 
-        st.plotly_chart(create_break_even_chart(df_be, be_alter), width="stretch")
+        st.plotly_chart(create_break_even_chart(df_be, be_alter), use_container_width=True)
         with st.expander("Break-Even Datentabelle anzeigen"):
             st_display_table(
                 df_be,

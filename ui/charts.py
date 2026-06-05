@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-def create_sankey(labels, sources, targets, values, title, show_vals=True, group_names=None, leaf_names=None):
+def create_sankey(labels, sources, targets, values, title, show_vals=True, group_names=None, leaf_names=None, height=400):
     """
     Erstellt ein professionelles Sankey-Diagramm mit dynamischer Farbgebung.
     Unterstützt jetzt auch spezifische Knoten für Soli und KiSt.
@@ -20,8 +20,8 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True, group
             node_colors.append("#28B463") # Grün
         elif "unterdeckung" in low_label or "abschlag" in low_label or "beitragsverlust" in low_label:
             node_colors.append("#CB4335") # Kräftiges Rot
-        elif "steuer" in low_label or "soli" in low_label or "kist" in low_label or "abgaben" in low_label:
-            node_colors.append("#E74C3C") # Etwas helleres Rot für Steuern/Abgaben
+        elif "steuer" in low_label or "soli" in low_label or "kist" in low_label or "abgaben" in low_label or "abzug" in low_label or "abzüge" in low_label:
+            node_colors.append("#E74C3C") # Etwas helleres Rot für Steuern/Abgaben/Abzüge
         elif leaf_names and label in leaf_names:
             node_colors.append("#9467bd") # Premium Violett für Endkategorien
         elif group_names and label in group_names:
@@ -32,7 +32,7 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True, group
     link_colors = []
     for t in targets:
         low_t = labels[t].lower()
-        if "abschlag" in low_t or "beitragsverlust" in low_t or "abgaben" in low_t or "steuer" in low_t or "soli" in low_t:
+        if "abschlag" in low_t or "beitragsverlust" in low_t or "abgaben" in low_t or "steuer" in low_t or "soli" in low_t or "abzug" in low_t or "abzüge" in low_t:
             link_colors.append("rgba(203, 67, 53, 0.4)") # Leicht transparentes Rot
         else:
             link_colors.append("#E5E7E9")
@@ -57,7 +57,7 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True, group
         title_text=title, 
         font=dict(size=13, color="black", family="Arial"), 
         template="plotly_white", 
-        height=400,
+        height=height,
         margin=dict(l=20, r=20, t=50, b=20),
         separators=",."
     )

@@ -52,3 +52,35 @@ def test_import_settings_clears_old_category_widgets():
     assert "ren_Wohnen" in deleted_keys
     assert "c_Wohnen" in deleted_keys
     assert "a_Wohnen" in deleted_keys
+
+
+def test_import_settings_loads_entnahme_start():
+    # Setup mock session state
+    state = {}
+    session_state = MagicMock()
+    session_state.__setitem__.side_effect = state.__setitem__
+    session_state.__getitem__.side_effect = state.__getitem__
+    session_state.__contains__.side_effect = state.__contains__
+    mock_st.session_state = session_state
+    
+    # Prepare JSON import data
+    import_data = {
+        "version": "2.0",
+        "data": {
+            "entnahme_start_modus": "Ab Rentenbeginn",
+            "entnahme_start_jahr": 2045,
+            "entnahme_start_monat": 6
+        }
+    }
+    json_file = io.StringIO(json.dumps(import_data))
+    
+    # Run import
+    success = import_settings(json_file)
+    assert success
+    
+    # Verify that the keys were written to session_state
+    assert state.get("entnahme_start_modus") == "Ab Rentenbeginn"
+    assert state.get("entnahme_start_jahr") == 2045
+    assert state.get("entnahme_start_monat") == 6
+
+

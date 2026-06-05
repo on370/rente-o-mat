@@ -190,12 +190,27 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
     beitragsverlust_gesamt = 0.0
     potential_gesamt = 0.0
     kapitalzuwachs_sonder = 0.0
+    _debug_sonderzuwachs_details = []
     sv = 0.0
     steuer_ekst = 0.0
     soli = 0.0
     kist = 0.0
     netto = 0.0
     grv_netto = 0.0
+    
+    # Phasenunabhängige Vorverarbeitung der Einmalzahlungen (z.B. bAV Auszahlung vor Rentenbeginn)
+    einmalzahlungen_bav = []
+    sv_einnahmen_bav_ez = []
+    for e in params.get('einnahmen', []):
+        if e.get("typ") == "bAV (Einmalzahlung)":
+            if jahr_float >= e["start"] and jahr_float < e["start"] + 10:
+                sv_einnahmen_bav_ez.append({"name": e["name"] + " (SV)", "betrag": e["betrag"] / 120, "typ": "bAV"})
+            if start_t <= e["start"] < end_t:
+                einmalzahlungen_bav.append({
+                    "name": e["name"],
+                    "betrag": e["betrag"],
+                    "reinvest_target": e.get("reinvest_target", "global")
+                })
 
     # --- 1. HAUPTEINNAHMEN (GEHALT ODER RENTE) ---
     if phase == "Aktiv" or "ATZ" in phase:
@@ -241,11 +256,17 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         r_ant = berechne_rentensteuer_anteil(int(rentenbeginn))
         alter_bei_rentenbeginn = int(rentenbeginn - geburtsjahr)
         ertragsanteil = berechne_ertragsanteil(alter_bei_rentenbeginn)
-        sv_einnahmen, einmalzahlungen_bav = [], []
+        sv_einnahmen = sv_einnahmen_bav_ez.copy()
         kapitalertraege_jahressumme = 0.0
 
         for e in params.get('einnahmen', []):
-            if jahr_float >= e.get("start", 0) and jahr_float <= e.get("ende", 9999):
+            start_val = e.get("start", 0)
+            if e.get("typ") == "bAV (Einmalzahlung)":
+                ende_val = start_val + 10.0
+            else:
+                ende_val = e.get("ende", 9999)
+                
+            if jahr_float >= start_val and jahr_float <= ende_val:
                 if e["typ"] == "Gesetzlich":
                     grv = _calculate_grv_components(jahr_float, e, params)
                     val = grv["basis_brutto"]
@@ -256,10 +277,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
                 elif e["typ"] == "bAV":
                     val = _dynamisiere_betrag(e.get("betrag", 0.0), e.get("start", jahr), jahr, bav_anpassung_rate)
                 elif e["typ"] == "bAV (Einmalzahlung)":
-                    if jahr_float >= e["start"] and jahr_float < e["start"] + 10:
-                        sv_einnahmen.append({"name": e["name"] + " (SV)", "betrag": e["betrag"] / 120, "typ": "bAV"})
-                    if int(jahr_float) == int(e["start"]): einmalzahlungen_bav.append(e["betrag"])
-                    continue
+                    continue # Wurde bereits phasenunabhängig oben vorverarbeitet
                 elif e["typ"] == "Entnahmeplan (Vermögen)":
                     found = any(a_s["name"] == e["name"] for a_s in (assets_state or []))
                     if not found:
@@ -295,11 +313,32 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         steuer_kapital = berechne_abgeltungsteuer(st_pfl_kapital, kirchensteuer_satz, sparerpauschbetrag=0) / 12
         steuer_ekst += steuer_kapital
         
-        for ez in einmalzahlungen_bav:
-            m_ekst = berechne_fuenftelregelung(st_b * 12, ez, jahr)
-            kapitalzuwachs_sonder += ez - m_ekst 
-            
         netto = b_g - steuer_ekst - soli - kist - sv
+        
+    # --- 1.1 EINMALZAHLUNGEN (PHASENUNABHÄNGIG) ---
+    # Diese werden am Ende der regulären Phasen-Berechnung hinzugefügt
+    from logic.taxes import berechne_fuenftelregelung
+    
+    for ez_item in einmalzahlungen_bav:
+        ez = ez_item["betrag"]
+        m_ekst = berechne_fuenftelregelung(st_b * 12 if phase == "Rente" else b_g * 12, ez, jahr)
+        netto_ez = ez - m_ekst
+        kapitalzuwachs_sonder += netto_ez
+        _debug_sonderzuwachs_details.append({
+            "name": ez_item["name"],
+            "betrag": netto_ez,
+            "reinvest_target": ez_item["reinvest_target"]
+        })
+        
+        # Einmalzahlungen werden als voller Betrag angezeigt
+        mtl_factor = 12.0 * segment_weight
+        b_g += ez
+        steuer_ekst += m_ekst
+        income_details[ez_item["name"]] = ez 
+        
+    netto = b_g - steuer_ekst - soli - kist - sv
+    
+    if phase == "Rente":
         # Isolierte Netto-GRV für Strategie-Check (K5-Fix)
         grv_brutto_mtl = income_details.get("Gesetzliche Rente", 0.0)
         if grv_brutto_mtl > 0:
@@ -405,6 +444,7 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         "Überschuss/Defizit": netto - ausgaben, "Rentenabschlag": rentenabschlag_gesamt,
         "Beitragsverlust": beitragsverlust_gesamt, "Gesetzliche Rente (Potenzial)": potential_gesamt,
         "Kapitalzuwachs_Sonder": kapitalzuwachs_sonder,
+        "_debug_Sonderzuwachs_Details": _debug_sonderzuwachs_details,
         "_debug_zve": zve_jahr,
         "_debug_st_b": st_b * 12 if phase == "Rente" else b_g * 12,
         "_debug_sv": sv * 12,
@@ -687,10 +727,19 @@ def generate_trend_data(jahre, params):
             # Korrektur: Wir reinvestieren nur den "echten" Überschuss, der NICHT aus Asset-Entnahmen stammt.
             # Sonst entsteht ein Loop, wenn ein Asset mit Entnahmeplan gleichzeitig Reinvest-Ziel ist.
             entnahmen_aus_assets = sum(v for k, v in res.items() if k.startswith("Entnahme: "))
-            jahres_saldo = (res["Überschuss/Defizit"] - entnahmen_aus_assets) * 12 * weight
             
+            # Da Einmalzahlungen jetzt in voller Höhe im Netto (und damit Überschuss) stecken,
+            # müssen wir diese für die Berechnung des monatlichen, laufenden Saldos herausrechnen.
+            netto_einmalzahlung_jahr = res.get("Kapitalzuwachs_Sonder", 0.0)
+            
+            # Laufender monatlicher Überschuss ohne Einmalzahlung und ohne Asset-Entnahmen
+            laufender_ueberschuss_mtl = res["Überschuss/Defizit"] - entnahmen_aus_assets - netto_einmalzahlung_jahr
+            
+            # Der normale Jahressaldo (laufender Überschuss hochgerechnet auf das Segment)
+            jahres_saldo = laufender_ueberschuss_mtl * 12 * weight
+            
+            # 1. Normalen Jahressaldo reinvestieren (über das globale Reinvestitionsziel)
             if jahres_saldo > 0:
-                # Wohin mit dem Geld?
                 diff_to_limit = max(0, liq_limit - liquiditaet["kapital"])
                 if diff_to_limit > 0:
                     flow_to_liq = min(jahres_saldo, diff_to_limit)
@@ -698,19 +747,43 @@ def generate_trend_data(jahre, params):
                     jahres_saldo -= flow_to_liq
                 
                 if jahres_saldo > 0 and reinvest_target_name != "— Keine (nur Cash-Reserven) —":
-                    # In Ziel-Asset investieren
                     target_asset = next((a for a in assets_state if a["name"] == reinvest_target_name), None)
-                    if target_asset and (entnahme_strategie == "Manuell (Keine Automatik)" or target_asset not in user_assets):
+                    if target_asset:
                         target_asset["kapital"] += jahres_saldo
                         jahres_saldo = 0
                 
-                # Falls immer noch Rest (weil kein Target gewählt oder Asset nicht gefunden)
                 if jahres_saldo > 0:
                     liquiditaet["kapital"] += jahres_saldo
             else:
                 # Defizit: Erst aus Liquidität decken (kann negativ gehen)
-                # Hier nutzen wir den vollen Saldo (inkl. Entnahmen), da Entnahmen ja dazu da sind, Defizite zu decken.
-                liquiditaet["kapital"] += res["Überschuss/Defizit"] * 12 * weight 
+                # Hier nutzen wir den normalen laufenden Gesamtsaldo, den wir berechnet haben
+                laufendes_defizit = laufender_ueberschuss_mtl * 12 * weight
+                liquiditaet["kapital"] += laufendes_defizit
+
+            # 2. Sonderzuwächse (Einmalzahlungen) einzeln reinvestieren (gemäß einkommensspezifischem Reinvestitionsziel)
+            for sz in res.get("_debug_Sonderzuwachs_Details", []):
+                sz_betrag = sz["betrag"]
+                sz_target = sz["reinvest_target"]
+                if sz_target == "global" or sz_target == "Gemäß globaler Einstellung":
+                    sz_target = reinvest_target_name
+                
+                # Zuerst in die Liquidität (Cash-Reserven) bis zum Limit einzahlen
+                diff_to_limit = max(0, liq_limit - liquiditaet["kapital"])
+                if diff_to_limit > 0:
+                    flow_to_liq = min(sz_betrag, diff_to_limit)
+                    liquiditaet["kapital"] += flow_to_liq
+                    sz_betrag -= flow_to_liq
+                
+                # Den Rest in das einkommensspezifische Asset reinvestieren
+                if sz_betrag > 0 and sz_target != "— Keine (nur Cash-Reserven) —":
+                    target_asset = next((a for a in assets_state if a["name"] == sz_target), None)
+                    if target_asset:
+                        target_asset["kapital"] += sz_betrag
+                        sz_betrag = 0
+                
+                # Falls immer noch ein Rest vorhanden ist (weil kein Target gewählt oder Asset nicht gefunden)
+                if sz_betrag > 0:
+                    liquiditaet["kapital"] += sz_betrag 
             
             # 3. Asset-Werte in 'res' aktualisieren, damit das Chart den Stand NACH Reinvestition zeigt
             for a_s in assets_state:

@@ -272,6 +272,9 @@ def render_sidebar():
                 "entnahme_wasserfall_reihenfolge": st.session_state.get("entnahme_wasserfall_reihenfolge", []),
                 "entnahme_fix_pct": st.session_state.get("entnahme_fix_pct", 4.0),
                 "entnahme_ziel_alter": st.session_state.get("entnahme_ziel_alter", 95),
+                "entnahme_start_modus": st.session_state.get("entnahme_start_modus", "Sofort (ab aktuellem Jahr)"),
+                "entnahme_start_jahr": st.session_state.get("entnahme_start_jahr", aktuelles_jahr),
+                "entnahme_start_monat": st.session_state.get("entnahme_start_monat", 1),
             }
             json_str = export_settings(export_params)
 
@@ -1271,7 +1274,6 @@ def render_sidebar():
                     "Privat",
                     "Kapital",
                     "bAV (Einmalzahlung)",
-                    "Entnahmeplan (Vermögen)",
                     "Sonstiges",
                 ]
                 f_typ_index = (
@@ -1293,19 +1295,18 @@ def render_sidebar():
                         min_value=aktuelles_jahr,
                     )
                     f_ende = f_start
-                elif f_typ == "Entnahmeplan (Vermögen)":
-                    f_betrag = st.number_input(
-                        "Entnahme (€/mtl. Netto)",
-                        value=float(current_e["betrag"]),
-                        min_value=0.0,
-                    )
-                    f_start = st.number_input(
-                        "Von Jahr",
-                        value=int(current_e["start"]),
-                        min_value=aktuelles_jahr,
-                    )
-                    f_ende = st.number_input(
-                        "Bis Jahr", value=int(current_e["ende"]), min_value=f_start
+                    
+                    asset_names = [a["name"] for a in st.session_state.get("assets", [])]
+                    reinvest_options = ["Gemäß globaler Einstellung", "— Keine (nur Cash-Reserven) —"] + asset_names
+                    curr_target = current_e.get("reinvest_target", "Gemäß globaler Einstellung")
+                    if curr_target not in reinvest_options:
+                        curr_target = "Gemäß globaler Einstellung"
+                        
+                    f_reinvest_target = st.selectbox(
+                        "Reinvestitions-Ziel",
+                        options=reinvest_options,
+                        index=reinvest_options.index(curr_target),
+                        help="Bestimmt, wohin der Netto-Auszahlungsbetrag fließen soll."
                     )
                 elif f_typ == "Gesetzlich":
                     eingabe_modus_options = ["Euro-Betrag", "Entgeltpunkte (EP)"]
@@ -1377,6 +1378,8 @@ def render_sidebar():
                     if f_typ == "Gesetzlich":
                         new_data["eingabe_modus"] = f_eingabe_modus
                         new_data["punkte"] = f_punkte
+                    elif f_typ == "bAV (Einmalzahlung)":
+                        new_data["reinvest_target"] = f_reinvest_target
                     if is_edit:
                         st.session_state.einnahmen[st.session_state.edit_idx] = new_data
                     else:
@@ -1674,14 +1677,16 @@ def render_sidebar():
                 start_modus = st.selectbox(
                     "Wann soll die automatische Entnahme frühestens greifen?",
                     start_modus_options,
-                    index=start_idx,
-                    key="entnahme_start_modus"
+                    index=start_idx
                 )
+                st.session_state["entnahme_start_modus"] = start_modus
                 
                 if start_modus == "Individuell (Jahr/Monat)":
                     col1, col2 = st.columns(2)
-                    col1.number_input("Start-Jahr", min_value=aktuelles_jahr, max_value=2100, value=int(st.session_state.get("entnahme_start_jahr", aktuelles_jahr)), step=1, key="entnahme_start_jahr")
-                    col2.number_input("Start-Monat", min_value=1, max_value=12, value=int(st.session_state.get("entnahme_start_monat", 1)), step=1, key="entnahme_start_monat")
+                    entnahme_start_jahr = col1.number_input("Start-Jahr", min_value=aktuelles_jahr, max_value=2100, value=int(st.session_state.get("entnahme_start_jahr", aktuelles_jahr)), step=1)
+                    entnahme_start_monat = col2.number_input("Start-Monat", min_value=1, max_value=12, value=int(st.session_state.get("entnahme_start_monat", 1)), step=1)
+                    st.session_state["entnahme_start_jahr"] = entnahme_start_jahr
+                    st.session_state["entnahme_start_monat"] = entnahme_start_monat
 
             # Exkludiere Assets mit aktivem manuellen Entnahmeplan von der Automatik
             available_assets = [a for a in st.session_state.assets if not a.get("entnahme_aktiv")]

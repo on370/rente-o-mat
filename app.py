@@ -530,7 +530,8 @@ with tab1:
 
         for e in p["einnahmen"]:
             jahr_float = res.get("Jahr_Float", float(res["Jahr"]))
-            if jahr_float >= e.get("start", 0) and jahr_float <= e.get("ende", 9999):
+            is_active_year = (e.get("start", 0) <= jahr_float <= e.get("ende", 9999)) or (e.get("typ") == "bAV (Einmalzahlung)" and int(jahr_float) == int(e["start"]))
+            if is_active_year:
                 val = res.get(e["name"], 0.0)
                 if val > 0 and e["typ"] != "Gesetzlich":
                     add_r(e["name"], "Brutto", val)
@@ -1078,73 +1079,77 @@ with tab5:
 
     with st.expander("🗓️ Die Timeline (Meilensteine)"):
         st.markdown("**Chronologischer Ablauf der wichtigsten Ereignisse.**")
+        
+        show_expenses = st.checkbox("Ausgaben zeigen", value=False)
 
         from logic.pdf_export import fmt_jahr_monat_de
 
         # Chronologische Timeline aufbauen
         timeline_items = []
+        # Element-Struktur: (t_val, text, typ)
         timeline_items.append(
-            (
-                float(p["aktuelles_jahr"]),
-                f"Start der Simulation: <b>Januar {p['aktuelles_jahr']}</b>",
-            )
+            (float(p["aktuelles_jahr"]), "Start der Simulation", "info")
         )
 
         if p.get("atz_simulieren"):
             atz_mitte = p["atz_start"] + (p["atz_dauer"] / 2)
             timeline_items.append(
-                (
-                    float(p["atz_start"]),
-                    f"Beginn der Altersteilzeit (ATZ-Aktiv): <b>{fmt_jahr_monat_de(p['atz_start'])}</b>",
-                )
+                (float(p["atz_start"]), "Beginn der Altersteilzeit (ATZ-Aktiv)", "info")
             )
             timeline_items.append(
-                (
-                    float(atz_mitte),
-                    f"Wechsel in die Freistellungsphase (ATZ-Passiv): <b>{fmt_jahr_monat_de(atz_mitte)}</b>",
-                )
+                (float(atz_mitte), "Wechsel in die Freistellungsphase (ATZ-Passiv)", "info")
             )
 
         timeline_items.append(
-            (
-                float(p["rentenbeginn"]),
-                f"Renteneintritt: <b>{fmt_jahr_monat_de(p['rentenbeginn'])}</b>",
-            )
+            (float(p["rentenbeginn"]), "Renteneintritt", "info")
         )
 
         # Weitere Einkünfte
         for e in p.get("einnahmen", []):
-            if float(e["start"]) > float(p["aktuelles_jahr"]) and float(
-                e["start"]
-            ) != float(p["rentenbeginn"]):
-                timeline_items.append(
-                    (
-                        float(e["start"]),
-                        f"Start der Auszahlung von {e['name']}: <b>{fmt_jahr_monat_de(e['start'])}</b> ({e['betrag']:,.2f} € mtl.)",
-                    )
-                )
+            if e["typ"] == "bAV (Einmalzahlung)":
+                desc = f"Auszahlung von {e['name']} ({e['betrag']:,.2f} € Brutto einmalig)"
+            else:
+                desc = f"Start der Auszahlung von {e['name']} ({e['betrag']:,.2f} € mtl.)"
+            timeline_items.append((float(e["start"]), desc, "income"))
 
         # Einmalige Sonderausgaben
         for ea in p.get("einmalige_ausgaben", []):
             t_event = float(ea["jahr"]) + (int(ea.get("monat", 1)) - 1) / 12
             if t_event >= float(p["aktuelles_jahr"]):
-                timeline_items.append(
-                    (
-                        t_event,
-                        f"Einmalige Sonderausgabe '{ea['name']}': <b>{fmt_jahr_monat_de(t_event)}</b> ({ea['betrag']:,.2f} €)",
-                    )
-                )
+                timeline_items.append((t_event, f"Einmalige Sonderausgabe '{ea['name']}' ({ea['betrag']:,.2f} €)", "expense"))
+                
+        # Befristete Ausgaben
+        for ba in p.get("befristete_ausgaben", []):
+            t_start = float(ba["start"])
+            t_ende = float(ba["ende"])
+            if t_start >= float(p["aktuelles_jahr"]):
+                timeline_items.append((t_start, f"Start der befristeten Ausgabe '{ba['name']}' ({ba['betrag']:,.2f} € mtl.)", "expense"))
+            if t_ende >= float(p["aktuelles_jahr"]):
+                timeline_items.append((t_ende, f"Ende der befristeten Ausgabe '{ba['name']}'", "expense"))
 
         # Sortieren nach Zeitpunkt
         timeline_items.sort(key=lambda x: x[0])
 
         timeline_html = "<ul>"
-        for t_val, t_desc in timeline_items:
+        for t_val, text, typ in timeline_items:
+            if typ == "expense" and not show_expenses:
+                continue
+                
             # Währungswerte formatieren (. -> , und X -> .)
-            formatted_desc = (
-                t_desc.replace(",", "X").replace(".", ",").replace("X", ".")
-            )
-            timeline_html += f"<li>{formatted_desc}</li>"
+            formatted_desc = text.replace(",", "X").replace(".", ",").replace("X", ".")
+            date_str = fmt_jahr_monat_de(t_val)
+            
+            if show_expenses:
+                if typ == "income":
+                    date_html = f"<b style='color: green;'>{date_str}:</b>"
+                elif typ == "expense":
+                    date_html = f"<b style='color: red;'>{date_str}:</b>"
+                else:
+                    date_html = f"<b>{date_str}:</b>"
+            else:
+                date_html = f"<b>{date_str}:</b>"
+                
+            timeline_html += f"<li>{date_html} {formatted_desc}</li>"
         timeline_html += "</ul>"
 
         st.markdown(timeline_html, unsafe_allow_html=True)
@@ -1175,7 +1180,17 @@ with tab5:
             elif typ == "bAV":
                 frist = "⏱️ **3 bis 6 Monate vor Rentenbeginn** (bzw. vor Ausscheiden aus dem Betrieb)."
                 wo = "🏢 **Letzter Arbeitgeber** (Personalabteilung) bzw. direkt beim Versorgungsträger (Direktversicherung/Pensionskasse)."
-                bemerkung = "Beitragspflichtig in KV/PV (187,25 € Freibetrag p.a. in 2025 gilt einmalig). Voll steuerpflichtig."
+                bemerkung = "Beitragspflichtig in KV/PV (monatlicher Freibetrag von 197,75 € in 2026). Voll nachgelagert steuerpflichtig."
+            elif typ == "bAV (Einmalzahlung)":
+                frist = "⏱️ **3 bis 6 Monate vor Rentenbeginn** (bzw. vor Ausscheiden aus dem Betrieb)."
+                wo = "🏢 **Letzter Arbeitgeber** (Personalabteilung) bzw. direkt beim Versorgungsträger."
+                bemerkung = (
+                    "Voll nachgelagert steuerpflichtig. Die Engine wendet automatisch die steuerlich vorteilhafte **Fünftelregelung (§ 34 EStG)** an. "
+                    "**Praktischer Steuer-Tipp:** Der Versorgungsträger behält die Steuer meist direkt bei Auszahlung ermäßigt ein. Dennoch ist eine "
+                    "**Einkommensteuererklärung zwingend nötig** (Eintragung in **Anlage R-AV** bzw. **Anlage N** bei Bezügen für mehrere Jahre), "
+                    "damit das Finanzamt die Fünftelregelung endgültig anwendet und eventuell zu viel gezahlte Steuer erstattet. "
+                    "In der KV/PV wird die Abfindung rechnerisch über 10 Jahre (120 Monate) verteilt (mtl. Freibetrag von 197,75 € in 2026)."
+                )
             elif typ == "Private Rente" or "versicherung" in name.lower():
                 frist = "⏱️ **3 bis 6 Monate vor Rentenbeginn** (zur Prüfung der Verrentung vs. einmalige Kapitalabfindung)."
                 wo = "🏢 **Versicherungsgesellschaft** (Einreichung der Police und Rentenantrag)."
@@ -1189,32 +1204,42 @@ with tab5:
             start_jahr_int = int(start_t)
             timeline_rows = df_timeline[df_timeline["Jahr"] == start_jahr_int]
             est_val = 0.0
-            if not timeline_rows.empty:
+            if not timeline_rows.empty and name in df_timeline.columns:
                 est_val = timeline_rows[name].max()
 
-            if est_val > 0.1:
-                f_est_val = (
-                    f"{est_val:,.2f} €".replace(",", "X")
-                    .replace(".", ",")
-                    .replace("X", ".")
-                )
-                betrag_str = (
-                    f"**{f_est_val}** mtl. (prognostiziert ab {start_jahr_int})"
-                )
-            else:
+            if typ == "bAV (Einmalzahlung)":
+                zeitraum_str = f"Einmalig im {fmt_jahr_monat_de(start_t)}"
                 f_nominal = (
                     f"{betrag_start:,.2f} €".replace(",", "X")
                     .replace(".", ",")
                     .replace("X", ".")
                 )
-                betrag_str = f"**{f_nominal}** mtl. (nominaler Startbetrag)"
+                betrag_str = f"**{f_nominal}** einmalig (Brutto)"
+            else:
+                zeitraum_str = f"{fmt_jahr_monat_de(start_t)} bis {fmt_jahr_monat_de(ende_t)}"
+                if est_val > 0.1:
+                    f_est_val = (
+                        f"{est_val:,.2f} €".replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
+                    betrag_str = (
+                        f"**{f_est_val}** mtl. (prognostiziert ab {start_jahr_int})"
+                    )
+                else:
+                    f_nominal = (
+                        f"{betrag_start:,.2f} €".replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
+                    betrag_str = f"**{f_nominal}** mtl. (nominaler Startbetrag)"
 
             entnahmen_data.append(
                 {
                     "Beginn": fmt_jahr_monat_de(start_t),
                     "Was / Typ": name,
                     "TypName": typ,
-                    "Wann (Zeitraum)": f"{fmt_jahr_monat_de(start_t)} bis {fmt_jahr_monat_de(ende_t)}",
+                    "Wann (Zeitraum)": zeitraum_str,
                     "Höhe (mtl.)": betrag_str,
                     "Antragsfrist / To-Do": frist,
                     "Wo beantragen / beauftragen": wo,

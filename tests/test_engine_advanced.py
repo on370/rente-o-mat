@@ -193,3 +193,141 @@ def test_individual_start_transition():
     assert pytest.approx(row_2["end_t"]) == 2029.0
     assert row_2.get("Entnahme: Depot A", 0.0) > 0.0
 
+
+def test_bav_einmalzahlung_cash_accumulation():
+    """
+    Prüft, ob eine bAV (Einmalzahlung) im Fälligkeitsjahr den Cash-Reserven
+    netto gutgeschrieben wird (wenn Reinvestition deaktiviert ist).
+    """
+    test_params = {
+        'geburtsjahr': 1965,
+        'aktuelles_jahr': 2026,
+        'rentenbeginn': 2030.0,
+        'aktuelles_brutto': 0.0,
+        'kinderzahl': 0,
+        'kirchensteuer_satz': 0.0,
+        'inflation_rate': 0.0,
+        'rentenanpassung_rate': 0.0,
+        'bav_anpassung_rate': 1.0,
+        'gehalts_dynamik': 0.0,
+        'atz_simulieren': False,
+        'atz_start': 9999,
+        'einnahmen': [
+            {"name": "Einmal-bAV", "betrag": 50000.0, "typ": "bAV (Einmalzahlung)", "start": 2030.0, "ende": 2030.0}
+        ],
+        'ausgaben_kategorien': [],
+        'ausgaben_input': {},
+        'befristete_ausgaben': [],
+        'einmalige_ausgaben': [],
+        'assets': [],
+        'entnahme_strategie': 'Manuell (Keine Automatik)',
+        'reinvest_target': '— Keine (nur Cash-Reserven) —',
+        'liquidity_reserve': 10000.0,
+        'liquidity_yield': 0.0
+    }
+
+    # Wir generieren Daten von 2026 bis 2031
+    df = generate_trend_data(list(range(2026, 2032)), test_params)
+    
+    # Vor 2030 muss Cash 0 sein (da kein Gehalt/Ausgaben)
+    assert df[df["Jahr"] == 2029]["ASSET_VAL_Cash-Reserven (kum.)"].values[0] == 0.0
+    
+    # In 2030 findet die bAV-Auszahlung statt.
+    cash_2030 = df[df["Jahr"] == 2030]["ASSET_VAL_Cash-Reserven (kum.)"].values[0]
+    assert cash_2030 > 45000.0
+    assert cash_2030 < 50000.0
+
+
+def test_bav_einmalzahlung_reinvestment():
+    """
+    Prüft, ob die Einmalzahlung bei gesetztem Reinvestitions-Ziel
+    automatisch in das Ziel-Asset fließt, sobald die Cash-Reserve voll ist.
+    """
+    test_params = {
+        'geburtsjahr': 1965,
+        'aktuelles_jahr': 2026,
+        'rentenbeginn': 2030.0,
+        'aktuelles_brutto': 0.0,
+        'kinderzahl': 0,
+        'kirchensteuer_satz': 0.0,
+        'inflation_rate': 0.0,
+        'rentenanpassung_rate': 0.0,
+        'bav_anpassung_rate': 1.0,
+        'gehalts_dynamik': 0.0,
+        'atz_simulieren': False,
+        'atz_start': 9999,
+        'einnahmen': [
+            {"name": "Einmal-bAV", "betrag": 50000.0, "typ": "bAV (Einmalzahlung)", "start": 2030.0, "ende": 2030.0}
+        ],
+        'ausgaben_kategorien': [],
+        'ausgaben_input': {},
+        'befristete_ausgaben': [],
+        'einmalige_ausgaben': [],
+        'assets': [
+            {"name": "Welt-ETF", "startwert": 0.0, "rendite_pa": 0.0, "steuertyp": "steuerfrei", "entnahme_aktiv": False}
+        ],
+        'entnahme_strategie': 'Manuell (Keine Automatik)',
+        'reinvest_target': 'Welt-ETF',
+        'liquidity_reserve': 1000.0, # Niedriger Notgroschen
+        'liquidity_yield': 0.0
+    }
+
+    df = generate_trend_data(list(range(2026, 2032)), test_params)
+    
+    # Cash-Reserve darf maximal das Limit (1000.0) erreichen
+    cash_2030 = df[df["Jahr"] == 2030]["ASSET_VAL_Cash-Reserven (kum.)"].values[0]
+    assert cash_2030 == pytest.approx(1000.0)
+    
+    # Der verbleibende Rest der Netto-Auszahlung muss im Welt-ETF liegen
+    etf_2030 = df[df["Jahr"] == 2030]["ASSET_VAL_Welt-ETF"].values[0]
+    assert etf_2030 > 44000.0
+    assert etf_2030 < 49000.0
+
+
+def test_bav_einmalzahlung_specific_reinvestment():
+    """
+    Prüft, ob bei zwei bAV (Einmalzahlungen) im selben Jahr, die auf
+    unterschiedliche Reinvestitionsziele verweisen, das Geld korrekt aufgeteilt wird.
+    """
+    test_params = {
+        'geburtsjahr': 1965,
+        'aktuelles_jahr': 2026,
+        'rentenbeginn': 2030.0,
+        'aktuelles_brutto': 0.0,
+        'kinderzahl': 0,
+        'kirchensteuer_satz': 0.0,
+        'inflation_rate': 0.0,
+        'rentenanpassung_rate': 0.0,
+        'bav_anpassung_rate': 1.0,
+        'gehalts_dynamik': 0.0,
+        'atz_simulieren': False,
+        'atz_start': 9999,
+        'einnahmen': [
+            {"name": "bAV-Cash", "betrag": 30000.0, "typ": "bAV (Einmalzahlung)", "start": 2030.0, "ende": 2030.0, "reinvest_target": "— Keine (nur Cash-Reserven) —"},
+            {"name": "bAV-ETF", "betrag": 30000.0, "typ": "bAV (Einmalzahlung)", "start": 2030.0, "ende": 2030.0, "reinvest_target": "Spezial-ETF"}
+        ],
+        'ausgaben_kategorien': [],
+        'ausgaben_input': {},
+        'befristete_ausgaben': [],
+        'einmalige_ausgaben': [],
+        'assets': [
+            {"name": "Spezial-ETF", "startwert": 0.0, "rendite_pa": 0.0, "steuertyp": "steuerfrei", "entnahme_aktiv": False}
+        ],
+        'entnahme_strategie': 'Manuell (Keine Automatik)',
+        'reinvest_target': '— Keine (nur Cash-Reserven) —',  # Global kein Reinvestment
+        'liquidity_reserve': 10000.0,
+        'liquidity_yield': 0.0
+    }
+
+    df = generate_trend_data(list(range(2026, 2032)), test_params)
+
+    cash_2030 = df[df["Jahr"] == 2030]["ASSET_VAL_Cash-Reserven (kum.)"].values[0]
+    etf_2030 = df[df["Jahr"] == 2030]["ASSET_VAL_Spezial-ETF"].values[0]
+
+    # bAV-Cash Netto-Betrag fließt in Cash, füllt Liquidität auf (10k), Rest bleibt in Cash.
+    # bAV-ETF Netto-Betrag fließt vollständig in Spezial-ETF, da Liquidität bereits durch bAV-Cash voll ist.
+    assert cash_2030 > 20000.0
+    assert etf_2030 > 20000.0
+
+
+

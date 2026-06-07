@@ -328,7 +328,27 @@ with tab1:
             if not kat.get("is_group")
         }
 
-        a_sq_sum = sum(p["ausgaben_input"].values())
+        # 1. Starten mit den normalen Haushaltsbuch-Eingaben
+        sq_expenses = {k: v for k, v in p["ausgaben_input"].items()}
+        
+        # 2. Befristete Ausgaben hinzurechnen, wenn sie im aktuellen Jahr aktiv sind
+        aktuelles_jahr = p["aktuelles_jahr"]
+        for ba in p.get("befristete_ausgaben", []):
+            if float(ba["start"]) <= float(aktuelles_jahr) <= float(ba["ende"]):
+                kat = ba.get("kategorie") or ba["name"]
+                if not kat or kat == "Hauptebene":
+                    kat = ba["name"]
+                sq_expenses[kat] = sq_expenses.get(kat, 0.0) + ba["betrag_mtl"]
+                
+        # 3. Einmalige Ausgaben im aktuellen Jahr hinzurechnen
+        for ea in p.get("einmalige_ausgaben", []):
+            if int(ea["jahr"]) == int(aktuelles_jahr):
+                kat = ea.get("kategorie") or ea["name"]
+                if not kat or kat == "Hauptebene":
+                    kat = ea["name"]
+                sq_expenses[kat] = sq_expenses.get(kat, 0.0) + (ea["betrag"] / 12.0)
+
+        a_sq_sum = sum(sq_expenses.values())
         d_sq = p["aktuelles_netto"] - a_sq_sum
         add_sq("Aktuelles Netto", "Haushalts-Budget", p["aktuelles_netto"])
         if d_sq > 0:
@@ -338,13 +358,13 @@ with tab1:
 
         # Calculate group sums for status quo
         group_sums = {}
-        for k, v in p["ausgaben_input"].items():
+        for k, v in sq_expenses.items():
             parent_id = id_to_parent.get(k)
             if parent_id:
                 group_sums[parent_id] = group_sums.get(parent_id, 0.0) + v
 
         # Route flows
-        for k, v in p["ausgaben_input"].items():
+        for k, v in sq_expenses.items():
             if v > 0:
                 parent_id = id_to_parent.get(k)
                 name = id_to_name.get(k, k)
@@ -646,16 +666,23 @@ with tab1:
             if not kat.get("is_group")
         }
 
+        # Zuerst alle Kategorien aus dem Profil plus eventuelle sonstige EXP_-Schlüssel aus res
+        res_exp_keys = [k.replace("EXP_", "") for k in res.keys() if k.startswith("EXP_")]
+        all_exp_keys = list(p["ausgaben_kategorien"])
+        for k in res_exp_keys:
+            if k not in all_exp_keys:
+                all_exp_keys.append(k)
+
         # Calculate dynamic group sums for the active year in 'res'
         group_sums = {}
-        for k in p["ausgaben_kategorien"]:
+        for k in all_exp_keys:
             val = res.get(f"EXP_{k}", 0.0)
             parent_id = id_to_parent.get(k)
             if parent_id and val > 0:
                 group_sums[parent_id] = group_sums.get(parent_id, 0.0) + val
 
         # Route flows
-        for k in p["ausgaben_kategorien"]:
+        for k in all_exp_keys:
             val = res.get(f"EXP_{k}", 0.0)
             if val > 0:
                 parent_id = id_to_parent.get(k)
@@ -1149,7 +1176,7 @@ with tab5:
             t_start = float(ba["start"])
             t_ende = float(ba["ende"])
             if t_start >= float(p["aktuelles_jahr"]):
-                timeline_items.append((t_start, f"Start der befristeten Ausgabe '{ba['name']}' ({ba['betrag']:,.2f} € mtl.)", "expense"))
+                timeline_items.append((t_start, f"Start der befristeten Ausgabe '{ba['name']}' ({ba['betrag_mtl']:,.2f} € mtl.)", "expense"))
             if t_ende >= float(p["aktuelles_jahr"]):
                 timeline_items.append((t_ende, f"Ende der befristeten Ausgabe '{ba['name']}'", "expense"))
 

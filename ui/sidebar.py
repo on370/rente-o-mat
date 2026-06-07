@@ -908,18 +908,22 @@ def render_sidebar():
 
                 # Kategorie: bestehende wählen ODER neue eingeben
                 leaves = [kat for kat in st.session_state.haushaltsbuch_kategorien if not kat.get("is_group")]
-                kat_optionen = [kat["name"] for kat in leaves] + ["Hauptebene", "— Neue Kategorie —"]
-                kat_ids = [kat["id"] for kat in leaves] + ["", "— Neue Kategorie —"]
+                kat_optionen = [kat["name"] for kat in leaves] + ["— Neue Kategorie —"]
+                kat_ids = [kat["id"] for kat in leaves] + ["— Neue Kategorie —"]
                 
                 curr_kat_id = curr.get("kategorie", "")
-                if curr_kat_id in kat_ids:
-                    kat_idx = kat_ids.index(curr_kat_id)
-                else:
-                    matching_ids = [kat["id"] for kat in leaves if kat["name"] == curr_kat_id]
-                    if matching_ids:
-                        kat_idx = kat_ids.index(matching_ids[0])
+                if is_edit:
+                    if curr_kat_id in kat_ids:
+                        kat_idx = kat_ids.index(curr_kat_id)
                     else:
-                        kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
+                        matching_ids = [kat["id"] for kat in leaves if kat["name"] == curr_kat_id]
+                        if matching_ids:
+                            kat_idx = kat_ids.index(matching_ids[0])
+                        else:
+                            kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
+                else:
+                    # Standardmäßig "— Neue Kategorie —" für neue befristete Ausgaben
+                    kat_idx = len(kat_optionen) - 1
 
                 ba_kat_sel = st.selectbox(
                     "Kategorie",
@@ -930,14 +934,35 @@ def render_sidebar():
                 )
                 selected_kat_id = kat_ids[ba_kat_sel]
                 
+                # Gruppe für die Kategorie wählen (Sammelkategorien)
+                groups = [kat for kat in st.session_state.haushaltsbuch_kategorien if kat.get("is_group")]
+                group_names = ["— Hauptebene —"] + [g["name"] for g in groups]
+                group_ids = [None] + [g["id"] for g in groups]
+                
                 if selected_kat_id == "— Neue Kategorie —":
+                    default_kat_name = curr_kat_id if curr_kat_id not in kat_ids else ""
+                    if not default_kat_name and not is_edit:
+                        default_kat_name = ba_name
                     ba_kat = st.text_input(
                         "Neue Kategorie",
-                        value=curr_kat_id if curr_kat_id not in kat_ids else "",
+                        value=default_kat_name,
                         key="ba_kat_new",
                     )
+                    curr_group_idx = 0
                 else:
                     ba_kat = selected_kat_id
+                    # Finde aktuelle parent_id der gewählten Kategorie
+                    current_parent_id = next((k.get("parent_id") for k in st.session_state.haushaltsbuch_kategorien if k["id"] == selected_kat_id), None)
+                    curr_group_idx = group_ids.index(current_parent_id) if current_parent_id in group_ids else 0
+                
+                ba_group_sel = st.selectbox(
+                    "Zugeordnete Gruppe",
+                    options=range(len(group_names)),
+                    format_func=lambda idx: group_names[idx],
+                    index=curr_group_idx,
+                    key="ba_group_sel"
+                )
+                selected_group_id = group_ids[ba_group_sel]
 
                 ba_infl = st.checkbox(
                     "Steigt mit Inflation",
@@ -952,6 +977,7 @@ def render_sidebar():
                         existing = [k for k in st.session_state.haushaltsbuch_kategorien if k["name"].lower() == typed_name.lower()]
                         if existing:
                             final_kat_id = existing[0]["id"]
+                            existing[0]["parent_id"] = selected_group_id
                         else:
                             # Create new leaf category
                             import time
@@ -959,7 +985,7 @@ def render_sidebar():
                             st.session_state.haushaltsbuch_kategorien.append({
                                 "id": new_id,
                                 "name": typed_name,
-                                "parent_id": None,
+                                "parent_id": selected_group_id,
                                 "is_group": False,
                                 "betrag": 0.0,
                                 "rv_pct": 100
@@ -969,6 +995,11 @@ def render_sidebar():
                             final_kat_id = new_id
                     else:
                         final_kat_id = selected_kat_id
+                        # Aktualisiere die Gruppe der bestehenden Kategorie
+                        for k in st.session_state.haushaltsbuch_kategorien:
+                            if k["id"] == final_kat_id:
+                                k["parent_id"] = selected_group_id
+                                break
 
                     new_ba = {
                         "name": ba_name,
@@ -1039,18 +1070,22 @@ def render_sidebar():
 
                 # Kategorie
                 leaves = [kat for kat in st.session_state.haushaltsbuch_kategorien if not kat.get("is_group")]
-                kat_optionen = [kat["name"] for kat in leaves] + ["Hauptebene", "— Neue Kategorie —"]
-                kat_ids = [kat["id"] for kat in leaves] + ["", "— Neue Kategorie —"]
+                kat_optionen = [kat["name"] for kat in leaves] + ["— Neue Kategorie —"]
+                kat_ids = [kat["id"] for kat in leaves] + ["— Neue Kategorie —"]
                 
                 curr_kat_id = curr.get("kategorie", "")
-                if curr_kat_id in kat_ids:
-                    kat_idx = kat_ids.index(curr_kat_id)
-                else:
-                    matching_ids = [kat["id"] for kat in leaves if kat["name"] == curr_kat_id]
-                    if matching_ids:
-                        kat_idx = kat_ids.index(matching_ids[0])
+                if is_edit:
+                    if curr_kat_id in kat_ids:
+                        kat_idx = kat_ids.index(curr_kat_id)
                     else:
-                        kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
+                        matching_ids = [kat["id"] for kat in leaves if kat["name"] == curr_kat_id]
+                        if matching_ids:
+                            kat_idx = kat_ids.index(matching_ids[0])
+                        else:
+                            kat_idx = len(kat_optionen) - 1  # "Neue Kategorie"
+                else:
+                    # Standardmäßig "— Neue Kategorie —" für neue Einmalausgaben
+                    kat_idx = len(kat_optionen) - 1
 
                 ea_kat_sel = st.selectbox(
                     "Kategorie",
@@ -1061,14 +1096,36 @@ def render_sidebar():
                 )
                 selected_kat_id = kat_ids[ea_kat_sel]
                 
+                # Gruppe für die Kategorie wählen (Sammelkategorien)
+                # Gruppe für die Kategorie wählen (Sammelkategorien)
+                groups = [kat for kat in st.session_state.haushaltsbuch_kategorien if kat.get("is_group")]
+                group_names = ["— Hauptebene —"] + [g["name"] for g in groups]
+                group_ids = [None] + [g["id"] for g in groups]
+                
                 if selected_kat_id == "— Neue Kategorie —":
+                    default_kat_name = curr_kat_id if curr_kat_id not in kat_ids else ""
+                    if not default_kat_name and not is_edit:
+                        default_kat_name = ea_name
                     ea_kat = st.text_input(
                         "Neue Kategorie",
-                        value=curr_kat_id if curr_kat_id not in kat_ids else "",
+                        value=default_kat_name,
                         key="ea_kat_new",
                     )
+                    curr_group_idx = 0
                 else:
                     ea_kat = selected_kat_id
+                    # Finde aktuelle parent_id der gewählten Kategorie
+                    current_parent_id = next((k.get("parent_id") for k in st.session_state.haushaltsbuch_kategorien if k["id"] == selected_kat_id), None)
+                    curr_group_idx = group_ids.index(current_parent_id) if current_parent_id in group_ids else 0
+                
+                ea_group_sel = st.selectbox(
+                    "Zugeordnete Gruppe",
+                    options=range(len(group_names)),
+                    format_func=lambda idx: group_names[idx],
+                    index=curr_group_idx,
+                    key="ea_group_sel"
+                )
+                selected_group_id = group_ids[ea_group_sel]
 
                 ea_infl = st.checkbox(
                     "Steigt mit Inflation",
@@ -1083,13 +1140,14 @@ def render_sidebar():
                         existing = [k for k in st.session_state.haushaltsbuch_kategorien if k["name"].lower() == typed_name.lower()]
                         if existing:
                             final_kat_id = existing[0]["id"]
+                            existing[0]["parent_id"] = selected_group_id
                         else:
                             import time
                             new_id = f"kat_{int(time.time() * 1000)}"
                             st.session_state.haushaltsbuch_kategorien.append({
                                 "id": new_id,
                                 "name": typed_name,
-                                "parent_id": None,
+                                "parent_id": selected_group_id,
                                 "is_group": False,
                                 "betrag": 0.0,
                                 "rv_pct": 100
@@ -1099,6 +1157,11 @@ def render_sidebar():
                             final_kat_id = new_id
                     else:
                         final_kat_id = selected_kat_id
+                        # Aktualisiere die Gruppe der bestehenden Kategorie
+                        for k in st.session_state.haushaltsbuch_kategorien:
+                            if k["id"] == final_kat_id:
+                                k["parent_id"] = selected_group_id
+                                break
 
                     new_ea = {
                         "name": ea_name,

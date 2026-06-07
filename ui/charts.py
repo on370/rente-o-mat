@@ -65,17 +65,20 @@ def create_sankey(labels, sources, targets, values, title, show_vals=True, group
 
 def _get_color_by_name(name, i=0):
     """Interne Hilfsfunktion für semantische Farbgebung."""
-    # Professionelle qualitative Palette (D3)
-    palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"]
+    # Professionelle qualitative Palette (D3), umsortiert für bessere Diversität
+    palette = ["#9467bd", "#8c564b", "#e377c2", "#bcbd22", "#17becf", "#1f77b4", "#ff7f0e", "#2ca02c", "#7f7f7f"]
     
     n = name.lower()
+    if "cash" in n or "reserve" in n or "liquidität" in n:
+        if "defizit" in n or "negativ" in n or "unterdeckung" in n:
+            return "#CB4335" # Rotes Defizit
+        return "#28B463" # Grünes Guthaben
+        
     if "gesetzlich" in n or "grv" in n or "rente" == n: return "#1f77b4" # Blau
     if "bav" in n or "betriebsrente" in n: return "#ff7f0e" # Orange
     if "gehalt" in n or "einkommen" in n: return "#17becf" # Teal
     if "aufstockung" in n: return "#e377c2" # Rosa/Magenta
     if "privat" in n: return "#2ca02c" # Grün
-    if "kapital" in n or "entnahme" in n or "depot" in n or "etf" in n: return "#9467bd" # Violett
-    if "cash" in n or "reserve" in n or "liquidität" in n: return "#28B463" # Kräftiges Grün
     
     return palette[i % len(palette)]
 
@@ -302,31 +305,74 @@ def create_wealth_chart(df):
     # Finde alle Asset-Spalten
     asset_cols = [c for c in df.columns if c.startswith("ASSET_VAL_")]
     
-    # Sortierung: Cash-Reserven ganz oben im Stapel, damit negative Werte 
-    # nicht die Basis der anderen Assets verschieben.
+    # Netto-Gesamtvermögen berechnen (Summe aller ASSET_VAL_ Spalten)
+    netto_gesamt = df[asset_cols].sum(axis=1)
+
+    has_cash = "ASSET_VAL_Cash-Reserven (kum.)" in asset_cols
+    has_negative_cash = False
+    if has_cash:
+        has_negative_cash = (df["ASSET_VAL_Cash-Reserven (kum.)"] < 0).any()
+
+    # Sortierung: Cash-Reserven ganz oben im Stapel
     if "ASSET_VAL_Cash-Reserven (kum.)" in asset_cols:
         asset_cols.remove("ASSET_VAL_Cash-Reserven (kum.)")
         asset_cols.append("ASSET_VAL_Cash-Reserven (kum.)")
 
+    # Positive Assets in stackgroup='positive' zeichnen
     for i, col in enumerate(asset_cols):
         name = col.replace("ASSET_VAL_", "")
-        color = _get_color_by_name(name, i)
-        
+        if name == "Cash-Reserven (kum.)":
+            # Cash-Reserven wird gesplittet: Hier nur der positive Anteil
+            y_vals = df[col].clip(lower=0)
+            color = _get_color_by_name(name, i)
+        else:
+            y_vals = df[col]
+            color = _get_color_by_name(name, i)
+
         fig.add_trace(
             go.Scatter(
                 x=x_vals, 
-                y=df[col], 
+                y=y_vals, 
                 name=name,
                 mode='lines',
-                stackgroup='one', # Macht es zum gestapelten Flächendiagramm
+                stackgroup='positive',
                 line=dict(width=0.5, color=color),
                 fillcolor=color,
                 hovertemplate="%{y:,.0f} €"
             )
         )
     
-    # Rote Null-Linie
-    fig.add_hline(y=0, line_width=2, line_color="#CB4335", line_dash="dash")
+    # Negative Cash-Reserven (Defizit) zeichnen (falls vorhanden)
+    if has_negative_cash:
+        neg_cash = df["ASSET_VAL_Cash-Reserven (kum.)"].clip(upper=0)
+        neg_color = _get_color_by_name("Cash-Reserven (Defizit)")
+        fig.add_trace(
+            go.Scatter(
+                x=x_vals,
+                y=neg_cash,
+                name="Cash-Reserven (Defizit)",
+                mode='lines',
+                fill='tozeroy',
+                line=dict(width=0.5, color=neg_color),
+                fillcolor=neg_color,
+                hovertemplate="%{y:,.0f} €"
+            )
+        )
+
+    # Netto-Gesamtvermögen als schwarze Referenzlinie zeichnen (gestrichelt)
+    fig.add_trace(
+        go.Scatter(
+            x=x_vals,
+            y=netto_gesamt,
+            name="Netto-Gesamtvermögen",
+            mode='lines',
+            line=dict(color='black', width=3, dash='dash'),
+            hovertemplate="%{y:,.0f} €"
+        )
+    )
+    
+    # Graue Null-Linie
+    fig.add_hline(y=0, line_width=1.5, line_color="gray", line_dash="dash")
     
     fig.update_layout(
         title="Detaillierte Vermögensentwicklung nach Assets",

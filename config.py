@@ -1,6 +1,6 @@
 VERSION = "1.5.3"
 STAGE = "[rel]"
-BUILD_ID = "00CD"  # Social Payments expandable
+BUILD_ID = "00D3"  # Allow Hauptebene option in group selectbox for both create and edit modes.
 
 # Aktueller Rentenwert ab 1. Juli 2026 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 42.52

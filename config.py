@@ -1,6 +1,6 @@
-VERSION = "1.5.3"
+VERSION = "1.5.5"
 STAGE = "[rel]"
-BUILD_ID = "00D3"  # Allow Hauptebene option in group selectbox for both create and edit modes.
+BUILD_ID = "00D5"  # UI Refactoring: Move Steuerklasse elements to Profil expander
 
 # Aktueller Rentenwert ab 1. Juli 2026 (einheitlich West/Ost)
 RENTENWERT_AKTUELL = 42.52

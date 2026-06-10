@@ -229,6 +229,38 @@ def render_sidebar():
             kirchensteuer_satz = kist_options[kist_display]
             st.session_state["kist_key"] = kirchensteuer_satz  # Speichern für Export
 
+            steuerklasse = st.selectbox(
+                "Steuerklasse",
+                options=[1, 2, 3, 4, 5],
+                index=0,
+                key="steuerklasse_key",
+                help="Deine Lohnsteuerklasse (steht auf deinem Gehaltszettel). "
+                     "StKl 1: Ledig | StKl 2: Alleinerziehend | "
+                     "StKl 3: Verheiratet (Allein-/Besserverdiener) | "
+                     "StKl 4: Verheiratet (beide ähnlich) | "
+                     "StKl 5: Verheiratet (Geringverdiener-Partner)"
+            )
+
+            kinderfreibetrag = st.number_input(
+                "Kinderfreibeträge (lt. Lohnsteuerbescheinigung)",
+                min_value=0.0, max_value=10.0, step=0.5,
+                value=0.0,
+                key="kinderfreibetrag_key",
+                help="Anzahl der Kinderfreibeträge (z.B. 0.5 pro Kind bei Steuerklasse 4). "
+                     "Steht auf deiner Lohnsteuerbescheinigung. "
+                     "Beeinflusst Solidaritätszuschlag und Kirchensteuer."
+            )
+
+            partner_einkommen = 0.0
+            if steuerklasse in [3, 4, 5]:
+                partner_einkommen = st.number_input(
+                    "Brutto Partner/in (mtl., optional)",
+                    min_value=0.0, step=100.0,
+                    key="partner_einkommen_key",
+                    help="Für den Splittingtarif in der Rentenphase. "
+                         "Falls leer: Simulation geht von Einzelveranlagung in der Rente aus."
+                )
+
             st.divider()
 
             # EXPORT
@@ -249,6 +281,9 @@ def render_sidebar():
                 "show_values": st.session_state.get("show_vals_key", True),
                 "einnahmen": st.session_state.get("einnahmen", []),
                 "haushaltsbuch_kategorien": st.session_state.get("haushaltsbuch_kategorien", []),
+                "steuerklasse": st.session_state.get("steuerklasse_key", 1),
+                "kinderfreibetraege": st.session_state.get("kinderfreibetrag_key", 0.0),
+                "partner_einkommen": st.session_state.get("partner_einkommen_key", 0.0),
                 "ausgaben_input": {
                     kat["id"]: kat["betrag"]
                     for kat in st.session_state.get("haushaltsbuch_kategorien", [])
@@ -513,6 +548,9 @@ def render_sidebar():
             tmp_params = {
                 "aktuelles_brutto": aktuelles_brutto,
                 "abzuege_brutto": abzuege_brutto,
+                "steuerklasse": steuerklasse,
+                "kinderfreibetraege": kinderfreibetrag,
+                "partner_einkommen": partner_einkommen,
                 "atz_aufstockung_pct": atz_aufst,
                 "kinderzahl": kinderzahl,
                 "kirchensteuer_satz": kirchensteuer_satz,

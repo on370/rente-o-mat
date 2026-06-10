@@ -60,6 +60,9 @@ WERBUNGSKOSTEN_PAUSCHBETRAG_AKTIV = 1230.0  # § 9a Satz 1 Nr. 1 Buchst. a EStG
 WERBUNGSKOSTEN_PAUSCHBETRAG_RENTE = 102.0   # § 9a Satz 1 Nr. 1 Buchst. b EStG
 SONDERAUSGABEN_PAUSCHBETRAG = 36.0          # § 10c EStG
 
+KINDERFREIBETRAG = {2024: 9312, 2025: 9312, 2026: 9312}
+ENTLASTUNGSBETRAG_ALLEINERZIEHEND = 4260  # § 24b EStG
+
 
 def ermittle_zve_naherung(brutto_jahr, jahr, phase="Aktiv", vorsorgeaufwendungen_jahr=0.0):
     """
@@ -111,7 +114,42 @@ def berechne_einkommensteuer(zu_versteuerndes_einkommen, jahr=2025):
     return float(math.floor(steuer))
 
 
-def berechne_progressionsvorbehalt(zu_versteuerndes_einkommen, steuerfreier_betrag, jahr=2025):
+def berechne_lohnsteuer(zve, jahr, steuerklasse=1):
+    """Monatliche Lohnsteuer nach Steuerklasse."""
+    t = _get_tarif(jahr)
+    
+    if steuerklasse in [1, 4]:
+        return berechne_einkommensteuer(zve, jahr)
+    
+    elif steuerklasse == 2:
+        # Grundtarif + Entlastungsbetrag
+        zve_korr = max(0, zve - ENTLASTUNGSBETRAG_ALLEINERZIEHEND)
+        return berechne_einkommensteuer(zve_korr, jahr)
+    
+    elif steuerklasse == 3:
+        # Splittingtarif
+        return 2 * berechne_einkommensteuer(zve / 2, jahr)
+    
+    elif steuerklasse == 5:
+        # Kein Grundfreibetrag → Steuer auf verschobenes Einkommen
+        gf = t["grundfreibetrag"]
+        return berechne_einkommensteuer(zve + gf, jahr) - berechne_einkommensteuer(gf, jahr)
+    
+    return berechne_einkommensteuer(zve, jahr)
+
+
+def berechne_zuschlagsteuern(ekst_jahr, zve, kinderfreibetraege, kirchensteuer_satz, jahr, splitting=False):
+    """Berechnet Soli und KiSt unter Berücksichtigung der Kinderfreibeträge."""
+    kifb_betrag = kinderfreibetraege * KINDERFREIBETRAG.get(jahr, 9312)
+    zve_zuschlag = max(0, zve - kifb_betrag)
+    ekst_zuschlag = berechne_einkommensteuer(zve_zuschlag, jahr)
+    
+    soli = berechne_soli(ekst_zuschlag, splitting=splitting, jahr=jahr)
+    kist = berechne_kirchensteuer(ekst_zuschlag, kirchensteuer_satz)
+    return soli, kist
+
+
+def berechne_progressionsvorbehalt(zu_versteuerndes_einkommen, steuerfreier_betrag, jahr=2025, steuerklasse=1):
     """
     Berechnet die Einkommensteuer unter Berücksichtigung des Progressionsvorbehalts (§ 32b EStG).
     """
@@ -119,7 +157,7 @@ def berechne_progressionsvorbehalt(zu_versteuerndes_einkommen, steuerfreier_betr
         return 0.0
 
     fiktives_gesamteinkommen = max(0, zu_versteuerndes_einkommen + steuerfreier_betrag)
-    fiktive_steuer = berechne_einkommensteuer(fiktives_gesamteinkommen, jahr)
+    fiktive_steuer = berechne_lohnsteuer(fiktives_gesamteinkommen, jahr, steuerklasse)
 
     effektiver_steuersatz = fiktive_steuer / fiktives_gesamteinkommen if fiktives_gesamteinkommen > 0 else 0
     return effektiver_steuersatz * zu_versteuerndes_einkommen

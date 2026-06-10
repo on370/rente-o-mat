@@ -243,15 +243,22 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         b_g, sv = brutto_auszahlung, sv_dict["Gesamt"]
         va_jahr = berechne_vorsorgeaufwendungen_steuerlich(brutto_st, jahr, phase="Aktiv")
         zve_jahr = ermittle_zve_naherung(brutto_st * 12, jahr, phase="Aktiv", vorsorgeaufwendungen_jahr=va_jahr)
+        from logic.taxes import berechne_einkommensteuer, berechne_progressionsvorbehalt, berechne_lohnsteuer, berechne_zuschlagsteuern
         
-        from logic.taxes import berechne_einkommensteuer, berechne_progressionsvorbehalt
+        steuerklasse = params.get('steuerklasse', 1)
+        kinderfreibetraege = params.get('kinderfreibetraege', 0.0)
+        
         if aufstockung > 0:
-            steuer_ekst = berechne_progressionsvorbehalt(zve_jahr, aufstockung * 12, jahr) / 12
+            steuer_ekst = berechne_progressionsvorbehalt(zve_jahr, aufstockung * 12, jahr, steuerklasse) / 12
         else:
-            steuer_ekst = berechne_einkommensteuer(zve_jahr, jahr) / 12
+            steuer_ekst = berechne_lohnsteuer(zve_jahr, jahr, steuerklasse) / 12
             
-        soli = berechne_soli(steuer_ekst * 12, jahr=jahr) / 12
-        kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
+        soli_jahr, kist_jahr = berechne_zuschlagsteuern(
+            steuer_ekst * 12, zve_jahr, kinderfreibetraege, 
+            kirchensteuer_satz, jahr, splitting=(steuerklasse in [3, 4, 5])
+        )
+        soli = soli_jahr / 12
+        kist = kist_jahr / 12
         netto = b_g - steuer_ekst - soli - kist - sv - abzuege_phase
 
     else: # Phase: Rente
@@ -308,9 +315,29 @@ def calculate_financials_for_year(jahr_float, params, assets_state=None, segment
         va_jahr = berechne_vorsorgeaufwendungen_steuerlich(st_b, jahr, phase="Rente", kinderzahl=kinderzahl, einnahmen_liste=sv_einnahmen)
         zve_jahr = ermittle_zve_naherung(st_b * 12, jahr, phase="Rente", vorsorgeaufwendungen_jahr=va_jahr)
         
-        steuer_ekst = berechne_einkommensteuer(zve_jahr, jahr) / 12
-        soli = berechne_soli(steuer_ekst * 12, jahr=jahr) / 12
-        kist = berechne_kirchensteuer(steuer_ekst * 12, kirchensteuer_satz) / 12
+        steuerklasse = params.get('steuerklasse', 1)
+        kinderfreibetraege = params.get('kinderfreibetraege', 0.0)
+        partner_einkommen_mtl = params.get('partner_einkommen', 0.0)
+        
+        if steuerklasse in [3, 4, 5] and partner_einkommen_mtl > 0.0:
+            zve_partner = partner_einkommen_mtl * 12 * 0.8
+            zve_gesamt = zve_jahr + zve_partner
+            steuer_gesamt = 2 * berechne_einkommensteuer(zve_gesamt / 2, jahr)
+            steuer_ekst_jahr = steuer_gesamt * (zve_jahr / zve_gesamt) if zve_gesamt > 0 else 0
+            is_splitting = True
+        else:
+            steuer_ekst_jahr = berechne_einkommensteuer(zve_jahr, jahr)
+            is_splitting = False
+            
+        steuer_ekst = steuer_ekst_jahr / 12
+        
+        from logic.taxes import berechne_zuschlagsteuern
+        soli_jahr, kist_jahr = berechne_zuschlagsteuern(
+            steuer_ekst * 12, zve_jahr, kinderfreibetraege, 
+            kirchensteuer_satz, jahr, splitting=is_splitting
+        )
+        soli = soli_jahr / 12
+        kist = kist_jahr / 12
         
         # M6: Konsistenter Sparerpauschbetrag (Rente-Einnahme)
         st_pfl_kapital = max(0.0, kapitalertraege_jahressumme - sparer_pausch_frei)
